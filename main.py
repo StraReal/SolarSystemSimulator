@@ -109,11 +109,11 @@ print('Angle:', angle)
 t = datetime.datetime(2026, 6, 21, 0, 0, 0)
 print(t)
 
-def screen_into_space(pos):
+def screen_to_space(pos):
     x, y = pos
     return kmpx_ratio * (2 * x - 1000) + camera_x, kmpx_ratio * (2 * y - 1000) + camera_y
 
-def space_into_screen(pos, cam_pos=None):
+def space_to_screen(pos, cam_pos=None):
     if cam_pos is None:
         cam_pos = camera_x, camera_y
     cam_x, cam_y = cam_pos
@@ -123,6 +123,7 @@ def space_into_screen(pos, cam_pos=None):
 
 def draw_space():
     global earth_x, earth_y, n_lines, kmpx_ratio, t_earth_size, old_positions
+    surface.fill((0, 0, 0, 0))
     if camera_mode == 0:
         t_earth_size = screen_size / 30
         t_sun_size = screen_size / 14
@@ -143,8 +144,8 @@ def draw_space():
 
     max_lines = 10
     t_n_lines = max_lines + ((math.log10(visible_area/ t_zoom_factor)**2) % max_lines)
-    line_space = screen_into_space((screen_size/t_n_lines, 0))[0] - screen_into_space((0, 0))[0]
-    spacezero = space_into_screen((0,0), (t_camera_x, t_camera_y))
+    line_space = screen_to_space((screen_size/t_n_lines, 0))[0] - screen_to_space((0, 0))[0]
+    spacezero = space_to_screen((0,0), (t_camera_x, t_camera_y))
     for x in range(round(t_n_lines) + 2):
         pygame.draw.line(screen, (50, 50, 70), (spacezero[0] + screen_size/t_n_lines*(vis_area_min_x//line_space-3) + screen_size/t_n_lines * x, 0), (spacezero[0] + screen_size/t_n_lines*(vis_area_min_x//line_space-3) + screen_size/t_n_lines * x, screen_size), 2)
 
@@ -163,13 +164,17 @@ def draw_space():
         color = (r, g, b)
         pygame.draw.line(screen, color, (mouse_x, mouse_y), (earth_x, earth_y), 5)
 
-    earth_x, earth_y = space_into_screen(earth_position, (t_camera_x, t_camera_y))
-    pygame.draw.circle(screen, (200, 100, 10), space_into_screen((0,0), (t_camera_x, t_camera_y)), t_sun_size)
+    earth_x, earth_y = space_to_screen(earth_position, (t_camera_x, t_camera_y))
+    pygame.draw.circle(screen, (200, 100, 10), space_to_screen((0,0), (t_camera_x, t_camera_y)), t_sun_size)
     pygame.draw.circle(screen, (14, 100, 168), (earth_x, earth_y), t_earth_size)
+
     for i in range(len(old_positions)-1):
-        pos= ((((old_positions[i][0] -t_camera_x) / kmpx_ratio) + 1000) / 2, (((old_positions[i][1] -t_camera_y) / kmpx_ratio) + 1000) / 2)
-        pos2= ((((old_positions[i+1][0] -t_camera_x) / kmpx_ratio) + 1000) / 2, (((old_positions[i+1][1] -t_camera_y) / kmpx_ratio) + 1000) / 2)
-        pygame.draw.line(screen, (150,150,180), pos, pos2, 1)
+        pos = space_to_screen(old_positions[i], (t_camera_x, t_camera_y))
+        pos2 = space_to_screen(old_positions[i+1], (t_camera_x, t_camera_y))
+        alpha = i/len(old_positions) * 255
+        pygame.draw.line(surface, (150,150,180,alpha), pos, pos2, 2)
+    screen.blit(surface, (0, 0))
+
     end_pos = (int(earth_x + velocity[0] * fps * 180 / kmpx_ratio), int(earth_y + velocity[1] * fps * 180 / kmpx_ratio))
     if 0 <= end_pos[0] <= screen_size and 0 <= end_pos[1] <= screen_size:
         pygame.draw.line(screen, (200, 200, 200), (earth_x, earth_y), end_pos, 5)
@@ -188,7 +193,7 @@ while True:
                     launching = True
                     dt=0
                 elif camera_mode == 1:
-                    orig_space_mouse_x, orig_space_mouse_y = screen_into_space((mouse_x, mouse_y))
+                    orig_space_mouse_x, orig_space_mouse_y = screen_to_space((mouse_x, mouse_y))
                     orig_camera_x, orig_camera_y = camera_x, camera_y
                     moving = True
             elif event.button == 3:
@@ -219,10 +224,10 @@ while True:
                 paused = not paused
     if moving:
         mouse_x, mouse_y = pygame.mouse.get_pos()
-        space_mouse_x, space_mouse_y = screen_into_space((mouse_x, mouse_y))
+        space_mouse_x, space_mouse_y = screen_to_space((mouse_x, mouse_y))
         camera_x, camera_y = orig_camera_x - space_mouse_x+orig_space_mouse_x, orig_camera_y - space_mouse_y+orig_space_mouse_y
         orig_camera_x, orig_camera_y = camera_x, camera_y
-        orig_space_mouse_x, orig_space_mouse_y = screen_into_space((mouse_x, mouse_y))
+        orig_space_mouse_x, orig_space_mouse_y = screen_to_space((mouse_x, mouse_y))
     if not paused:
         compute_frame()
     draw_space()
