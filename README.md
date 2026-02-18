@@ -11,3 +11,5 @@ Left Click (on planet) - Goes into "Launching" mode; you can pull and, on releas
 Right Click (on planet) - Switch to Planet-Centric view
 
 Mouse Wheel - Zoom
+
+R - Real-Time mode; time will pass at 1:1 to real life.

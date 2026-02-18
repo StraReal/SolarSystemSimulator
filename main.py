@@ -18,7 +18,7 @@ velocity = np.array([0, 500]) #km/s
 
 max_size = 1
 zoom_factor = 1
-t_earth_size = 1
+earth_size = 1
 kmpx_ratio = np.float64(1)
 l2000_max_size = max_size
 n_lines = 10
@@ -52,6 +52,8 @@ camera_mode = 0 #0: heliocentric #1: freecam
 
 GREEN = (0, 255, 0)
 DEEP_RED = (139, 0, 0)
+clock_font = pygame.font.SysFont("monospace", 20)
+clock_rect = pygame.Rect(10, 10, 300, 40)
 
 def calculate_vector(distance, angle): #2d position (km)
     return np.array([distance * math.cos(radians(angle)), distance * math.sin(radians(angle))])
@@ -89,9 +91,10 @@ def compute_frame():
     velocity = calculate_velocity(velocity, acceleration, dt)
     angle = calculate_angle(velocity)
     earth_position = calculate_position(earth_position, velocity, dt)
-    old_positions.append(earth_position)
-    if len(old_positions) >= fps*tail_life:
-        old_positions.pop(0)
+    if frame_count % 2 == 0:
+        old_positions.append(earth_position)
+        if len(old_positions) >= fps*tail_life:
+            old_positions.pop(0)
     if camera_mode == 2:
         camera_x, camera_y = earth_position
     if frame_count % 2000 == 0 or l2000_max_size > max_size:
@@ -122,20 +125,21 @@ def space_to_screen(pos, cam_pos=None):
     (((y - cam_y) / kmpx_ratio) + 1000) / 2)
 
 def draw_space():
-    global earth_x, earth_y, n_lines, kmpx_ratio, t_earth_size, old_positions
+    global earth_x, earth_y, n_lines, kmpx_ratio, earth_size, old_positions
     surface.fill((0, 0, 0, 0))
     if camera_mode == 0:
-        t_earth_size = screen_size / 30
-        t_sun_size = screen_size / 14
         t_zoom_factor = 1
         t_camera_x = 0
         t_camera_y = 0
     else:
-        t_earth_size = math.log10(max(10, revolving_radius / kmpx_ratio * 1000)) * revolving_radius / 10**math.floor(math.log10(revolving_radius))
-        t_sun_size = math.log10(max(10, central_radius / kmpx_ratio * 1000)) * central_radius / 10**math.floor(math.log10(central_radius))
         t_zoom_factor = zoom_factor
         t_camera_x = camera_x
         t_camera_y = camera_y
+
+    earth_size = math.log10(max(10, revolving_radius / kmpx_ratio * 1000)) * revolving_radius / 10 ** math.floor(
+        math.log10(revolving_radius))
+    sun_size = math.log10(max(10, central_radius / kmpx_ratio * 1000)) * central_radius / 10 ** math.floor(
+        math.log10(central_radius))
     kmpx_ratio = max_size / screen_size / t_zoom_factor
     visible_area = screen_size * kmpx_ratio
     vis_area_min_x = t_camera_x - visible_area/2
@@ -147,10 +151,10 @@ def draw_space():
     line_space = screen_to_space((screen_size/t_n_lines, 0))[0] - screen_to_space((0, 0))[0]
     spacezero = space_to_screen((0,0), (t_camera_x, t_camera_y))
     for x in range(round(t_n_lines) + 2):
-        pygame.draw.line(screen, (50, 50, 70), (spacezero[0] + screen_size/t_n_lines*(vis_area_min_x//line_space-3) + screen_size/t_n_lines * x, 0), (spacezero[0] + screen_size/t_n_lines*(vis_area_min_x//line_space-3) + screen_size/t_n_lines * x, screen_size), 2)
+        pygame.draw.line(screen, (24, 25, 70), (spacezero[0] + screen_size/t_n_lines*(vis_area_min_x//line_space-3) + screen_size/t_n_lines * x, 0), (spacezero[0] + screen_size/t_n_lines*(vis_area_min_x//line_space-3) + screen_size/t_n_lines * x, screen_size), 2)
 
     for y in range(round(t_n_lines) + 2):
-        pygame.draw.line(screen, (50, 50, 70), (0, spacezero[1] + screen_size/t_n_lines*(vis_area_min_y//line_space-3+y)), (screen_size, spacezero[1] + screen_size/t_n_lines*(vis_area_min_y//line_space-3+y)), 2)
+        pygame.draw.line(screen, (24, 25, 70), (0, spacezero[1] + screen_size/t_n_lines*(vis_area_min_y//line_space-3+y)), (screen_size, spacezero[1] + screen_size/t_n_lines*(vis_area_min_y//line_space-3+y)), 2)
 
     pygame.draw.line(screen, (255, 255, 255), (spacezero[0], 0), (spacezero[0], screen_size), 2)
     pygame.draw.line(screen, (255, 255, 255), (0, spacezero[1]), (screen_size, spacezero[1]), 2)
@@ -165,8 +169,8 @@ def draw_space():
         pygame.draw.line(screen, color, (mouse_x, mouse_y), (earth_x, earth_y), 5)
 
     earth_x, earth_y = space_to_screen(earth_position, (t_camera_x, t_camera_y))
-    pygame.draw.circle(screen, (200, 100, 10), space_to_screen((0,0), (t_camera_x, t_camera_y)), t_sun_size)
-    pygame.draw.circle(screen, (14, 100, 168), (earth_x, earth_y), t_earth_size)
+    pygame.draw.circle(screen, (200, 100, 10), space_to_screen((0,0), (t_camera_x, t_camera_y)), sun_size)
+    pygame.draw.circle(screen, (14, 100, 168), (earth_x, earth_y), earth_size)
 
     for i in range(len(old_positions)-1):
         pos = space_to_screen(old_positions[i], (t_camera_x, t_camera_y))
@@ -183,6 +187,13 @@ def draw_space():
     if 0 <= end_pos[0] <= screen_size and 0 <= end_pos[1] <= screen_size:
         pygame.draw.line(screen, (200, 0, 0), (earth_x, earth_y), end_pos, 5)
 
+    pygame.draw.rect(screen, (100, 100, 150), clock_rect)
+
+    clock_text = str(t.replace(microsecond=0))
+    clock_text_surface = clock_font.render(clock_text, True, (255, 255, 255))
+    clock_text_rect = clock_text_surface.get_rect(center=clock_rect.center)
+    screen.blit(clock_text_surface, clock_text_rect)
+
 
 clock = pygame.time.Clock()
 
@@ -193,7 +204,7 @@ while True:
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:
                 mouse_x, mouse_y = event.pos
-                if math.hypot(mouse_x - earth_x, mouse_y - earth_y) <= t_earth_size:
+                if math.hypot(mouse_x - earth_x, mouse_y - earth_y) <= earth_size:
                     launching = True
                     dt=0
                 elif camera_mode == 1:
@@ -202,7 +213,7 @@ while True:
                     moving = True
             elif event.button == 3:
                 mouse_x, mouse_y = event.pos
-                if math.hypot(mouse_x - earth_x, mouse_y - earth_y) <= t_earth_size:
+                if math.hypot(mouse_x - earth_x, mouse_y - earth_y) <= earth_size:
                     camera_mode = 2
                     camera_x, camera_y = earth_position
                 elif camera_mode == 2:
@@ -217,7 +228,7 @@ while True:
                     dt=dt_scale
                 moving = False
         if event.type == pygame.MOUSEWHEEL:
-            if camera_mode == 1 or 2:
+            if camera_mode in (1, 2):
                 mouse_x, mouse_y = pygame.mouse.get_pos()
                 zoom_factor = min(100,max(0.1, zoom_factor + event.y * 0.1 * zoom_factor**1.1))
                 #camera_x, camera_y = kmpx_ratio * 2 * (mouse_x - 1000) /2+camera_x, kmpx_ratio * 2 * (mouse_y - 1000) /2-camera_y
@@ -226,6 +237,8 @@ while True:
                 camera_mode = 1 if camera_mode == 0 else 0
             elif event.key == pygame.K_SPACE:
                 paused = not paused
+            elif event.key == pygame.K_r:
+                dt = 1/60 if dt!=1/60 else dt_scale
     if moving:
         mouse_x, mouse_y = pygame.mouse.get_pos()
         space_mouse_x, space_mouse_y = screen_to_space((mouse_x, mouse_y))
@@ -238,3 +251,4 @@ while True:
     pygame.display.flip()
     clock.tick(fps)
     frame_count += 1
+    t += datetime.timedelta(microseconds=round(dt*1000000))
