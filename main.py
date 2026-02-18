@@ -138,8 +138,8 @@ def draw_space():
         t_camera_y = camera_y
     kmpx_ratio = max_size / screen_size / t_zoom_factor
     visible_area = screen_size * kmpx_ratio
-    vis_area_min_x = camera_x - visible_area/2
-    vis_area_min_y = camera_y - visible_area/2
+    vis_area_min_x = t_camera_x - visible_area/2
+    vis_area_min_y = t_camera_y - visible_area/2
     screen.fill((0, 0, 20))
 
     max_lines = 10
@@ -178,6 +178,10 @@ def draw_space():
     end_pos = (int(earth_x + velocity[0] * fps * 180 / kmpx_ratio), int(earth_y + velocity[1] * fps * 180 / kmpx_ratio))
     if 0 <= end_pos[0] <= screen_size and 0 <= end_pos[1] <= screen_size:
         pygame.draw.line(screen, (200, 200, 200), (earth_x, earth_y), end_pos, 5)
+
+    end_pos = (int(earth_x + acceleration[0] * fps * 1440 * 2000  / kmpx_ratio), int(earth_y + acceleration[1] * fps * 1440 * 2000 / kmpx_ratio))
+    if 0 <= end_pos[0] <= screen_size and 0 <= end_pos[1] <= screen_size:
+        pygame.draw.line(screen, (200, 0, 0), (earth_x, earth_y), end_pos, 5)
 
 
 clock = pygame.time.Clock()
