@@ -5,16 +5,17 @@ import numpy as np
 import pygame
 
 central_mass = 1.989e30#kg
-revolving_mass = 5.972e24#kg
 
 central_radius = 695508#km
-revolving_radius = 6371#km
-relative_radius = central_radius / revolving_radius
 
-distance = 152028425#km
-angle = 0#degrees
-
-velocity = np.array([0, 500]) #km/s
+planets = {
+    'Earth': {
+        'mass': 5.972e24,
+        'radius': 6371,
+        'distance': 152028425,
+        'angle': 0,
+        'velocity': np.array([-4.07, -29.53]),}
+} #mass (kg), radius (km), distance (from the sun) (km), angle (degrees to X+), velocity (km/s)
 
 max_size = 1
 zoom_factor = 1
@@ -82,15 +83,30 @@ def calculate_angle(v):
 
     return degrees(theta)
 
+def calculate_distance(x1, y1, x2, y2):
+    return np.linalg.norm(np.array([x2 - x1, y2 - y1]))
+
 #central mass position (sun) is always 0,0.
-earth_position = calculate_vector(distance, angle)
+for planet_name, planet in planets.items():
+    planet['position'] = calculate_vector(planet['distance'], planet['angle'])
+
 def compute_frame():
-    global velocity, angle, max_size, l2000_max_size, earth_position, attraction, acceleration, frame_count, camera_x, camera_y
-    attraction = calculate_attraction(central_mass, revolving_mass, distance)
-    acceleration = calculate_acceleration(attraction, revolving_mass, earth_position)
-    velocity = calculate_velocity(velocity, acceleration, dt)
-    angle = calculate_angle(velocity)
-    earth_position = calculate_position(earth_position, velocity, dt)
+    global velocities, angles, max_size, l2000_max_size, positions, attractions, accelerations, frame_count, camera_x, camera_y, earth_position
+    for planet_name, planet in planets.items():
+        attraction = calculate_attraction(central_mass, planet['mass'], calculate_distance(planet['position'][0], planet['position'][1], 0, 0)*1000)
+        print(attraction)
+        planet['acceleration'] = calculate_acceleration(attraction, planet['mass'], planet['position'])
+        #for other_name, other in planets.items():
+        #    if planet_name != other_name:
+        #        attraction = calculate_attraction(other['mass'], planet['mass'],
+        #                                          calculate_distance(planet['position'][0], planet['position'][1],
+        #                                                             other['position'][0], other['position'][1]))
+        #        planet['acceleration'] += calculate_acceleration(attraction, planet['mass'], planet['position'])
+        planet['velocity'] = calculate_velocity(planet['velocity'], planet['acceleration'], dt)
+        planet['angle'] = calculate_angle(planet['velocity'])
+        planet['position'] = calculate_position(planet['position'], planet['velocity'], dt)
+        if planet_name == 'Earth':
+            earth_position = planet['position']
     if frame_count % 2 == 0:
         old_positions.append(earth_position)
         if len(old_positions) >= fps*tail_life:
@@ -103,11 +119,10 @@ def compute_frame():
     max_size = max(max_size*decrease_factor, abs(earth_position[0]) * 1.1, abs(earth_position[1]) * 1.1)
 compute_frame()
 
-print('(Relative to the sun) x:', earth_position[0], ' y:', earth_position[1])
-print('Attraction:', attraction)
-print('Acceleration:', acceleration)
-print('Velocity:', velocity)
-print('Angle:', angle)
+print('(Relative to the sun) x:', planets['Earth']['position'][0], ' y:', planets['Earth']['position'][1])
+print('Acceleration:', planets['Earth']['acceleration'])
+print('Velocity:', planets['Earth']['velocity'])
+print('Angle:', planets['Earth']['angle'])
 
 t = datetime.datetime(2026, 6, 21, 0, 0, 0)
 print(t)
@@ -136,8 +151,6 @@ def draw_space():
         t_camera_x = camera_x
         t_camera_y = camera_y
 
-    earth_size = math.log10(max(10, revolving_radius / kmpx_ratio * 1000)) * revolving_radius / 10 ** math.floor(
-        math.log10(revolving_radius))
     sun_size = math.log10(max(10, central_radius / kmpx_ratio * 1000)) * central_radius / 10 ** math.floor(
         math.log10(central_radius))
     kmpx_ratio = max_size / screen_size / t_zoom_factor
@@ -168,9 +181,25 @@ def draw_space():
         color = (r, g, b)
         pygame.draw.line(screen, color, (mouse_x, mouse_y), (earth_x, earth_y), 5)
 
-    earth_x, earth_y = space_to_screen(earth_position, (t_camera_x, t_camera_y))
-    pygame.draw.circle(screen, (200, 100, 10), space_to_screen((0,0), (t_camera_x, t_camera_y)), sun_size)
-    pygame.draw.circle(screen, (14, 100, 168), (earth_x, earth_y), earth_size)
+    pygame.draw.circle(screen, (200, 100, 10), space_to_screen((0, 0), (t_camera_x, t_camera_y)), sun_size)
+
+    for planet_name, planet in planets.items():
+        planet_size = math.log10(max(10, planet['radius'] / kmpx_ratio * 1000)) * planet['radius'] / 10 ** math.floor(
+            math.log10(planet['radius']))
+        planet_x, planet_y = space_to_screen(planet['position'], (t_camera_x, t_camera_y))
+        pygame.draw.circle(screen, (14, 100, 168), (earth_x, earth_y), earth_size)
+
+        end_pos = (int(planet_x + planet['velocity'][0] * fps * 180 / kmpx_ratio),
+                   int(planet_y + planet['velocity'][1] * fps * 180 / kmpx_ratio))
+        if 0 <= end_pos[0] <= screen_size and 0 <= end_pos[1] <= screen_size:
+            pygame.draw.line(screen, (200, 200, 200), (earth_x, earth_y), end_pos, 5)
+
+        end_pos = (int(planet_x + planet['acceleration'][0] * fps * 1440 * 2000 / kmpx_ratio),
+                   int(planet_y + planet['acceleration'][1] * fps * 1440 * 2000 / kmpx_ratio))
+        if 0 <= end_pos[0] <= screen_size and 0 <= end_pos[1] <= screen_size:
+            pygame.draw.line(screen, (200, 0, 0), (earth_x, earth_y), end_pos, 5)
+        if planet_name == 'Earth':
+            earth_x, earth_y, earth_size = planet_x, planet_y, planet_size
 
     for i in range(len(old_positions)-1):
         pos = space_to_screen(old_positions[i], (t_camera_x, t_camera_y))
@@ -179,14 +208,6 @@ def draw_space():
         pygame.draw.line(surface, (150,150,180,alpha), pos, pos2, 2)
     screen.blit(surface, (0, 0))
 
-    end_pos = (int(earth_x + velocity[0] * fps * 180 / kmpx_ratio), int(earth_y + velocity[1] * fps * 180 / kmpx_ratio))
-    if 0 <= end_pos[0] <= screen_size and 0 <= end_pos[1] <= screen_size:
-        pygame.draw.line(screen, (200, 200, 200), (earth_x, earth_y), end_pos, 5)
-
-    end_pos = (int(earth_x + acceleration[0] * fps * 1440 * 2000  / kmpx_ratio), int(earth_y + acceleration[1] * fps * 1440 * 2000 / kmpx_ratio))
-    if 0 <= end_pos[0] <= screen_size and 0 <= end_pos[1] <= screen_size:
-        pygame.draw.line(screen, (200, 0, 0), (earth_x, earth_y), end_pos, 5)
-
     pygame.draw.rect(screen, (100, 100, 150), clock_rect)
 
     clock_text = str(t.replace(microsecond=0))
@@ -194,6 +215,10 @@ def draw_space():
     clock_text_rect = clock_text_surface.get_rect(center=clock_rect.center)
     screen.blit(clock_text_surface, clock_text_rect)
 
+def pause():
+    global paused, dt
+    paused = not paused
+    dt = 0 if paused else dt_scale
 
 clock = pygame.time.Clock()
 
@@ -206,7 +231,7 @@ while True:
                 mouse_x, mouse_y = event.pos
                 if math.hypot(mouse_x - earth_x, mouse_y - earth_y) <= earth_size:
                     launching = True
-                    dt=0
+                    pause()
                 elif camera_mode == 1:
                     orig_space_mouse_x, orig_space_mouse_y = screen_to_space((mouse_x, mouse_y))
                     orig_camera_x, orig_camera_y = camera_x, camera_y
@@ -236,7 +261,7 @@ while True:
             if event.key == pygame.K_c:
                 camera_mode = 1 if camera_mode == 0 else 0
             elif event.key == pygame.K_SPACE:
-                paused = not paused
+                pause()
             elif event.key == pygame.K_r:
                 dt = 1/60 if dt!=1/60 else dt_scale
     if moving:
