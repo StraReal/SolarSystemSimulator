@@ -89,12 +89,13 @@ def calculate_distance(x1, y1, x2, y2):
 #central mass position (sun) is always 0,0.
 for planet_name, planet in planets.items():
     planet['position'] = calculate_vector(planet['distance'], planet['angle'])
+    print(planet['position'])
 
 def compute_frame():
     global velocities, angles, max_size, l2000_max_size, positions, attractions, accelerations, frame_count, camera_x, camera_y, earth_position
     for planet_name, planet in planets.items():
-        attraction = calculate_attraction(central_mass, planet['mass'], calculate_distance(planet['position'][0], planet['position'][1], 0, 0)*1000)
-        print(attraction)
+        attraction = calculate_attraction(central_mass, planet['mass'], calculate_distance(planet['position'][0], planet['position'][1], 0, 0))
+        print(planet['position'])
         planet['acceleration'] = calculate_acceleration(attraction, planet['mass'], planet['position'])
         #for other_name, other in planets.items():
         #    if planet_name != other_name:
