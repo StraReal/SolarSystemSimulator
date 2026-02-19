@@ -60,11 +60,21 @@ launching = ''
 moving = False
 paused = False
 real_sizes = False
+real_time = False
 
 pygame.init()
 screen_size = 1000
-screen = pygame.display.set_mode((screen_size, screen_size))
-surface = pygame.Surface((screen_size, screen_size), pygame.SRCALPHA)
+bar_size = 300
+screen = pygame.display.set_mode((screen_size+bar_size, screen_size))
+surface = pygame.Surface((screen_size+bar_size, screen_size), pygame.SRCALPHA)
+
+sidebar = pygame.Rect(screen_size, 0, bar_size, screen_size)
+
+name_rect = pygame.Rect(screen_size+20, 10, bar_size-40, 40)
+mass_rect = pygame.Rect(screen_size+20, 70, bar_size-40, 40)
+radius_rect = pygame.Rect(screen_size+20, 120, bar_size-40, 40)
+velocity_rect = pygame.Rect(screen_size+20, 170, bar_size-40, 40)
+velocity_rect_y = pygame.Rect(screen_size+20, 170+15, bar_size-40, 40)
 
 earth_x, earth_y = 0, 0
 mouse_x, mouse_y = 0, 0
@@ -79,6 +89,7 @@ GREEN = (0, 255, 0)
 DEEP_RED = (139, 0, 0)
 clock_font = pygame.font.SysFont("monospace", 20)
 clock_rect = pygame.Rect(10, 10, 300, 40)
+pos_rect = pygame.Rect(screen_size-300-10, 10, 300, 40)
 
 def calculate_vector(distance, angle): #2d position (km)
     return np.array([distance * math.cos(radians(angle)), distance * math.sin(radians(angle))])
@@ -181,8 +192,8 @@ def draw_space():
         t_camera_x = camera_x
         t_camera_y = camera_y
 
-    sun_size = calculate_planet_size(central_radius, is_sun=True)
     kmpx_ratio = max_size / screen_size / t_zoom_factor
+    sun_size = calculate_planet_size(central_radius, is_sun=True)
     visible_area = screen_size * kmpx_ratio
     va_min_x = t_camera_x - visible_area/2
     va_min_y = (-t_camera_y) - visible_area/2
@@ -217,11 +228,14 @@ def draw_space():
         color = (r, g, b)
         pygame.draw.line(screen, color, (mouse_x, mouse_y), (planet_x, planet_y), 5)
 
-    pygame.draw.circle(screen, (200, 100, 10), space_to_screen((0, 0), (t_camera_x, t_camera_y)), sun_size)
+    pygame.draw.circle(screen, (200, 100, 10), spacezero, sun_size)
 
     for planet_name, planet in planets.items():
         planet_size = calculate_planet_size(planet['radius'])
-        planet_x, planet_y = space_to_screen(planet['position'], (t_camera_x, t_camera_y))
+        if following == planet_name:
+            planet_x, planet_y = 500, 500
+        else:
+            planet_x, planet_y = space_to_screen(planet['position'], (t_camera_x, t_camera_y))
         pygame.draw.circle(screen, (planet['color']), (planet_x, planet_y), planet_size)
 
         end_pos = (int(planet_x + planet['velocity'][0] * fps * 180 / kmpx_ratio),
@@ -247,15 +261,53 @@ def draw_space():
 
     pygame.draw.rect(screen, (100, 100, 150), clock_rect)
 
-    clock_text = str(t.replace(microsecond=0))
-    clock_text_surface = clock_font.render(clock_text, True, (255, 255, 255))
-    clock_text_rect = clock_text_surface.get_rect(center=clock_rect.center)
-    screen.blit(clock_text_surface, clock_text_rect)
+    text = str(t.replace(microsecond=0))
+    text_surface = clock_font.render(text, True, (255, 255, 255))
+    text_rect = text_surface.get_rect(center=clock_rect.center)
+    screen.blit(text_surface, text_rect)
+
+    pygame.draw.rect(screen, (20, 20, 30), pos_rect)
+
+    text = "x{:.2e}".format(t_camera_x)+", y{:.2e}".format(t_camera_y)
+    text_surface = clock_font.render(text, True, (255, 255, 255))
+    text_rect = text_surface.get_rect(center=pos_rect.center)
+    screen.blit(text_surface, text_rect)
+
+    following_color = planets[following]['color'] if following else (10, 10, 20)
+    sidebar_color = ((following_color[0]+50)/6, (following_color[1]+50)/6, (following_color[2]+100)/6)
+    pygame.draw.rect(screen, sidebar_color, sidebar)
+    if following:
+        text = following
+        text_surface = clock_font.render(text, True, (255, 255, 255))
+        text_rect = text_surface.get_rect(center=name_rect.center)
+        screen.blit(text_surface, text_rect)
+
+        text = 'Mass: '+str(planets[following]['mass'])+'kg'
+        text_surface = clock_font.render(text, True, (255, 255, 255))
+        text_rect = text_surface.get_rect(midleft=mass_rect.midleft)
+        screen.blit(text_surface, text_rect)
+
+        text = 'Radius: '+str(planets[following]['radius'])+'km'
+        text_surface = clock_font.render(text, True, (255, 255, 255))
+        text_rect = text_surface.get_rect(midleft=radius_rect.midleft)
+        screen.blit(text_surface, text_rect)
+
+        velocity = planets[following]['velocity']
+        text = 'Velocity: '+ "x{:.2e}".format(velocity[0])+"km/s,"
+        text_surface = clock_font.render(text, True, (255, 255, 255))
+        text_rect = text_surface.get_rect(midleft=velocity_rect.midleft)
+        screen.blit(text_surface, text_rect)
+
+        text = "          y{:.2e}".format(velocity[1])+"km/s"
+        text_surface = clock_font.render(text, True, (255, 255, 255))
+        text_rect = text_surface.get_rect(bottomleft=velocity_rect_y.bottomleft)
+        screen.blit(text_surface, text_rect)
+
 
 def pause(pause=None):
     global paused, dt
     paused = not paused if pause is None else pause
-    dt = 0 if paused else dt_scale
+    dt = 0 if paused else dt_scale if not real_time else 1/fps
 
 clock = pygame.time.Clock()
 
@@ -292,7 +344,6 @@ while True:
                     planets[launching]['velocity'] = np.array([(planets[launching]['position'])[0] - space_mouse_x, planets[launching]['position'][1] - space_mouse_y]) / 30000
                     launching = ''
                     pause(False)
-                    dt=dt_scale
                 moving = False
         if event.type == pygame.MOUSEWHEEL:
             if camera_mode == 1:
@@ -310,7 +361,8 @@ while True:
                         if len(planet['old_positions']) >= fps * tail_life:
                             planet['old_positions'].pop(0)
             elif event.key == pygame.K_r:
-                dt = 1/60 if dt!=1/60 else dt_scale
+                real_time = not real_time
+                dt = 1/fps if real_time else dt_scale
             elif event.key == pygame.K_p:
                 real_sizes = not real_sizes
     if moving:
