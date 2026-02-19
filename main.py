@@ -125,7 +125,7 @@ def compute_frame():
                 attraction = calculate_attraction(other['mass'], planet['mass'],
                                                   (calculate_distance(planet['position'][0], planet['position'][1],
                                                                      other['position'][0], other['position'][1])-other['radius']-planet['radius'])*1000)
-                planet['acceleration'] += calculate_acceleration(attraction, planet['mass'], r_vec)
+                planet['acceleration'] += calculate_acceleration(attraction, planet['mass'], -r_vec)
         planet['velocity'] = calculate_velocity(planet['velocity'], planet['acceleration'], dt)
         planet['angle'] = calculate_angle(planet['velocity'])
         planet['position'] = calculate_position(planet['position'], planet['velocity'], dt)
@@ -179,21 +179,25 @@ def draw_space():
     sun_size = central_radius * 5 / kmpx_ratio
     kmpx_ratio = max_size / screen_size / t_zoom_factor
     visible_area = screen_size * kmpx_ratio
+    va_min_x = t_camera_x - visible_area/2
+    va_min_y = (-t_camera_y) - visible_area/2
     screen.fill((0, 0, 20))
 
     lines = (visible_area/(10**math.floor(math.log10(visible_area/2))))
-    line_space = screen_size/(visible_area/(10**math.floor(math.log10(visible_area/2))))
+    line_space = screen_size/lines
+    spacemin = space_to_screen((va_min_x, va_min_y), (t_camera_x, t_camera_y))
     spacezero = space_to_screen((0,0), (t_camera_x, t_camera_y))
-    for x in range(round(lines/2) + 1):
+    neglines = (math.floor((spacezero[0]-spacemin[0])/line_space), math.floor((spacezero[1]-spacemin[1])/line_space))
+    for x in range(round(lines/2) + 5):
         for i in range(2):
             i=1-i*2
-            pygame.draw.line(screen, (24, 25, 70), (spacezero[0] + i * line_space * x, 0), (spacezero[0] + i * x * line_space, screen_size), 2)
+            pygame.draw.line(screen, (24, 25, 70), (spacezero[0] + i * line_space * (x-neglines[0]*i), 0), (spacezero[0] + i * (x-neglines[0]*i) * line_space, screen_size), 2)
 
-    for y in range(round(lines / 2) + 1):
+    for y in range(round(lines / 2) + 5):
         for i in range(2):
             i = 1 - i * 2
-            pygame.draw.line(screen, (24, 25, 70), (0, spacezero[1] + i * line_space * y),
-                             (screen_size, spacezero[1] + i * line_space * y), 2)
+            pygame.draw.line(screen, (24, 25, 70), (0, spacezero[1] + i * line_space * -(y - neglines[1] * i)),
+                             (screen_size, spacezero[1] + i * line_space * -(y - neglines[1] * i)), 2)
 
     pygame.draw.line(screen, (255, 255, 255), (spacezero[0], 0), (spacezero[0], screen_size), 2)
     pygame.draw.line(screen, (255, 255, 255), (0, spacezero[1]), (screen_size, spacezero[1]), 2)
