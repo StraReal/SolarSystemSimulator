@@ -29,33 +29,32 @@ planets = {
         'radius': 6371,
         'distance': 152028425,
         'angle': 0,
-        'velocity': np.array([-4, 29]),
+        'velocity': np.array([-4, -29])*25,
         'color': (14, 100, 168)},
     'Jupiter': {
         'mass': 1.898e27,
         'radius': 69911,
         'distance': 778547200,
         'angle': 204.5,
-        'velocity': np.array([0,0]),
+        'velocity': np.array([-4, 29])*10,
         'color': (217,175,118) },
     'Mars': {
         'mass': 6.417e23,
         'radius': 3389.5,
         'distance': 149597870,
         'angle': 282.2,
-        'velocity': np.array([0, 0]),
+        'velocity': np.array([-29, -4])*25,
         'color': (193,68,14) },
     'Venus': {
         'mass': 4.867e24,
         'radius': 6051,
         'distance': 2.56e8,
         'angle': 192,
-        'velocity': np.array([0, 0]),
+        'velocity': np.array([-4, 29])*25,
         'color': (240,231,231) }
 
 } #mass (kg), radius (km), distance (from the sun) (km), angle (degrees to X+), velocity (km/s)
 
-print(planets['Earth']['velocity'])
 following = ''
 launching = ''
 moving = False
@@ -184,7 +183,6 @@ def draw_space():
 
     lines = (visible_area/(10**math.floor(math.log10(visible_area/2))))
     line_space = screen_size/(visible_area/(10**math.floor(math.log10(visible_area/2))))
-    print(lines)
     spacezero = space_to_screen((0,0), (t_camera_x, t_camera_y))
     for x in range(round(lines/2) + 1):
         for i in range(2):
