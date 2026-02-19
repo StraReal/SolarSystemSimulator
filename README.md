@@ -12,6 +12,10 @@ Right Click (on planet) - Follow planet, stop following by right-clicking anywhe
 
 Mouse Wheel - Zoom
 
+Q - Create planet at current mouse position
+
 R - Real-Time mode; time will pass at 1:1 to real life.
 
 P - Real-Size mode; planets will scale to their actual size. More realistic, but space between planets are absolutely gargantuan compared to the planets.
+
+D - Clear tails

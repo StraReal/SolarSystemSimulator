@@ -61,12 +61,16 @@ moving = False
 paused = False
 real_sizes = False
 real_time = False
+creating = False
+writing = False
 
 pygame.init()
+pygame.key.set_repeat(300, 30)
 screen_size = 1000
 bar_size = 300
-screen = pygame.display.set_mode((screen_size+bar_size, screen_size))
-surface = pygame.Surface((screen_size+bar_size, screen_size), pygame.SRCALPHA)
+total_size = screen_size+bar_size
+screen = pygame.display.set_mode((total_size, screen_size))
+surface = pygame.Surface((total_size, screen_size), pygame.SRCALPHA)
 
 sidebar = pygame.Rect(screen_size, 0, bar_size, screen_size)
 
@@ -76,20 +80,140 @@ radius_rect = pygame.Rect(screen_size+20, 120, bar_size-40, 40)
 velocity_rect = pygame.Rect(screen_size+20, 170, bar_size-40, 40)
 velocity_rect_y = pygame.Rect(screen_size+20, 170+15, bar_size-40, 40)
 
+delete_rect = pygame.Rect(screen_size+ bar_size/2+8, screen_size-40-10, bar_size/2 - 16, 40)
+deleteimage = pygame.image.load('assets/DeleteIcon.png').convert_alpha()
+deleteimage = pygame.transform.smoothscale(deleteimage, (delete_rect.width,
+                                             delete_rect.height))
+
+edit_rect = pygame.Rect(screen_size+12, screen_size-40-10, bar_size/2 - 16, 40)
+editimage = pygame.image.load('assets/EditIcon.png').convert_alpha()
+editimage = pygame.transform.smoothscale(editimage, (edit_rect.width,
+                                             edit_rect.height))
+
+create_rect = pygame.Rect(total_size/2-400, 200, 800, 600)
+create_text_rect = pygame.Rect(create_rect.left, create_rect.top+10, create_rect.width, 40)
+confirm_rect = pygame.Rect(create_rect.left+create_rect.width/4, create_rect.top+create_rect.height-50, create_rect.width/2, 40)
+color_rect = pygame.Rect(create_rect.left+3*create_rect.width/4+10, create_rect.top+create_rect.height-50, create_rect.width/4-20, 40)
+
 earth_x, earth_y = 0, 0
 mouse_x, mouse_y = 0, 0
 space_mouse_x, space_mouse_y = 0, 0
 orig_space_mouse_x, orig_space_mouse_y = 0, 0
 camera_x, camera_y = 0, 0
 orig_camera_x, orig_camera_y = 0, 0
+creating_x, creating_y = 0, 0
 
 camera_mode = 0 #0: heliocentric #1: freecam
 
 GREEN = (0, 255, 0)
 DEEP_RED = (139, 0, 0)
 clock_font = pygame.font.SysFont("monospace", 20)
+title_font = pygame.font.SysFont("monospace", 30)
 clock_rect = pygame.Rect(10, 10, 300, 40)
 pos_rect = pygame.Rect(screen_size-300-10, 10, 300, 40)
+
+class InputBox:
+    def __init__(self, x, y, w, h, text='', input_type=type):
+        self.orig_rect = pygame.Rect(x, y, w, h)
+        self.rect = pygame.Rect(x, y, w, h)
+        self.color_inactive = pygame.Color('lightskyblue3')
+        self.color_active   = pygame.Color('dodgerblue2')
+        self.color = self.color_inactive
+        self.text = text
+        self.txt_surface = clock_font.render(text, True, pygame.Color('white'))
+        self.active = False
+        self.input_type = input_type
+        pygame.scrap.init()
+        pygame.scrap.set_mode(pygame.SCRAP_CLIPBOARD)
+
+    def _isvalid(self):
+        """Return True if `self.raw_text` can be cast to `self.input_type`."""
+        try:
+            if self.input_type is bool:
+                lowered = self.text.strip().lower()
+                return lowered in ('true', 'false', '1', '0', 'yes', 'no', 'y', 'n')
+            self.input_type(self.text)
+            return True
+        except Exception:
+            return False
+
+    def _clean_text(self, txt: str) -> str:
+        """Remove null characters and other unwanted control codes."""
+        # keep only printable characters (including spaces)
+        return ''.join(ch for ch in txt if ch.isprintable() and not ch.isspace())
+
+    def _activate(self, activate=True):
+        global writing
+        self.active = activate
+        self.color = self.color_active if self.active else self.color_inactive
+        writing = writing or self.active
+
+    def handle_event(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            self._activate(self.rect.collidepoint(event.pos))
+            if not self.active:
+                entered = self.text
+                if self._isvalid():
+                    entered = self.input_type(entered)
+                    self._activate(False)
+                    return entered
+                return None
+
+        if event.type == pygame.KEYDOWN and self.active:
+            if event.key == pygame.K_RETURN:
+                entered = self.text
+                if self._isvalid():
+                    entered = self.input_type(entered)
+                    self._activate(False)
+                    return entered
+                return None
+            elif event.key == pygame.K_BACKSPACE:
+                self.text = self.text[:-1]
+            else:
+                self.text += self._clean_text(event.unicode)
+            self.txt_surface = clock_font.render(self.text, True, pygame.Color('white'))
+            ctrl = pygame.key.get_mods() & pygame.KMOD_CTRL
+
+            if ctrl and event.key == pygame.K_v:  # Paste
+                try:
+                    clip = pygame.scrap.get(pygame.SCRAP_TEXT)
+                    if clip:
+                        print(clip)
+                        paste_text = clip.decode('utf-8')
+                        self.text += self._clean_text(paste_text)
+                        self.txt_surface = clock_font.render(self.text, True, pygame.Color('white'))
+                except Exception:
+                    pass
+                return None
+
+    def update(self):
+        width = max(self.orig_rect.w, self.txt_surface.get_width() + 10)
+        self.rect.w = width
+
+    def draw(self, surface):
+        surface.blit(self.txt_surface, (self.rect.x + 5, self.rect.y + 5))
+        pygame.draw.rect(surface, self.color, self.rect, 2)
+
+inputs = [('Name', str), ('Mass', float), ('Radius', float), ('R', int), ('G',int), ('B', int)]
+input_titles = []
+input_boxes=[]
+results=[]
+for i, title in enumerate(inputs):
+    results.append(None)
+    input_titles.append(pygame.Rect(create_rect.left + create_rect.width*0.02, create_rect.top + 60 + 60*i, create_rect.width * 0.1, 40))
+    input_boxes.append(InputBox(create_rect.left + create_rect.width*0.14, create_rect.top + 60 + 60*i, create_rect.width * 0.73, 35, input_type=title[1]))
+
+def create_planet(name, mass, radius, color, x, y):
+    global planets, creating
+    planets[name] = {
+        'mass': mass,
+        'radius': radius,
+        'color': color,
+        'position': np.array([x, y]),
+        'old_positions': [],
+        'velocity': np.array([0, 0]),
+    }
+    creating=False
 
 def calculate_vector(distance, angle): #2d position (km)
     return np.array([distance * math.cos(radians(angle)), distance * math.sin(radians(angle))])
@@ -126,7 +250,7 @@ for planet_name, planet in planets.items():
     planet['position'] = calculate_vector(planet['distance'], planet['angle'])
     planet['old_positions'] = []
 
-def compute_frame():
+def compute_frame(count_frame=False):
     global velocities, angles, max_size, l2000_max_size, positions, attractions, accelerations, frame_count, camera_x, camera_y, earth_position
     for planet_name, planet in planets.items():
         attraction = calculate_attraction(central_mass, planet['mass'], (calculate_distance(planet['position'][0], planet['position'][1], 0, 0)-central_radius-planet['radius'])*1000)
@@ -143,7 +267,8 @@ def compute_frame():
         planet['position'] = calculate_position(planet['position'], planet['velocity'], dt)
         if planet_name == 'Earth':
             earth_position = planet['position']
-        if frame_count % 2 == 0:
+        count_frame = count_frame or frame_count % 2 == 0
+        if count_frame:
             planet['old_positions'].append(planet['position'])
             if len(planet['old_positions']) >= fps*tail_life:
                 planet['old_positions'].pop(0)
@@ -180,9 +305,17 @@ def calculate_planet_size(radius, is_sun=False): #returns radius from radius
     multiplier = (25 if is_sun else 300) if not real_sizes else 1
     return radius / kmpx_ratio * multiplier
 
+def is_color_valid(col):
+    try:
+        pygame.Color(col)
+        return True
+    except Exception:
+        return False
+
 def draw_space():
-    global earth_x, earth_y, n_lines, kmpx_ratio, earth_size, old_positions
+    global earth_x, earth_y, n_lines, kmpx_ratio, earth_size, old_positions,writing
     surface.fill((0, 0, 0, 0))
+
     if camera_mode == 0:
         t_zoom_factor = 1
         t_camera_x = 0
@@ -282,18 +415,18 @@ def draw_space():
         text_rect = text_surface.get_rect(center=name_rect.center)
         screen.blit(text_surface, text_rect)
 
-        text = 'Mass: '+str(planets[following]['mass'])+'kg'
+        text = "Mass: {:.2e}".format(planets[following]['mass'])+"kg"
         text_surface = clock_font.render(text, True, (255, 255, 255))
         text_rect = text_surface.get_rect(midleft=mass_rect.midleft)
         screen.blit(text_surface, text_rect)
 
-        text = 'Radius: '+str(planets[following]['radius'])+'km'
+        text = "Radius: {:.2e}".format(planets[following]['radius'])+"km"
         text_surface = clock_font.render(text, True, (255, 255, 255))
         text_rect = text_surface.get_rect(midleft=radius_rect.midleft)
         screen.blit(text_surface, text_rect)
 
         velocity = planets[following]['velocity']
-        text = 'Velocity: '+ "x{:.2e}".format(velocity[0])+"km/s,"
+        text = "Velocity: x{:.2e}".format(velocity[0])+"km/s,"
         text_surface = clock_font.render(text, True, (255, 255, 255))
         text_rect = text_surface.get_rect(midleft=velocity_rect.midleft)
         screen.blit(text_surface, text_rect)
@@ -303,6 +436,39 @@ def draw_space():
         text_rect = text_surface.get_rect(bottomleft=velocity_rect_y.bottomleft)
         screen.blit(text_surface, text_rect)
 
+        delimage_rect = deleteimage.get_rect(topleft=delete_rect.topleft)
+        screen.blit(deleteimage, delimage_rect)
+
+        editimage_rect = editimage.get_rect(topleft=edit_rect.topleft)
+        screen.blit(editimage, editimage_rect)
+
+    if creating:
+        pygame.draw.rect(screen, (30, 30, 50), create_rect)
+        text = "Create Planet"
+        text_surface = title_font.render(text, True, (255, 255, 255))
+        text_rect = text_surface.get_rect(center=create_text_rect.center)
+        screen.blit(text_surface, text_rect)
+        for i, input_title_rect in enumerate(input_titles):
+            text = inputs[i][0]
+            text_surface = clock_font.render(text, True, (255, 255, 255))
+            text_rect = text_surface.get_rect(midleft=input_title_rect.midleft)
+            screen.blit(text_surface, text_rect)
+        for input_box in input_boxes:
+            input_box.update()
+            input_box.draw(screen)
+        pygame.draw.rect(screen, (20, 90, 90), confirm_rect)
+        text = "Confirm"
+        text_surface = clock_font.render(text, True, (255, 255, 255))
+        text_rect = text_surface.get_rect(center=confirm_rect.center)
+        screen.blit(text_surface, text_rect)
+
+        sel_color = (results[3], results[4], results[5])
+        if is_color_valid(sel_color):
+            pygame.draw.rect(screen, sel_color, color_rect)
+        else:
+            pygame.draw.rect(screen, (0,0,0), color_rect)
+    else:
+        writing=False
 
 def pause(pause=None):
     global paused, dt
@@ -326,6 +492,23 @@ while True:
                     orig_space_mouse_x, orig_space_mouse_y = screen_to_space((mouse_x, mouse_y))
                     orig_camera_x, orig_camera_y = camera_x, camera_y
                     moving = True
+                if following:
+                    if delete_rect.collidepoint(mouse_x, mouse_y):
+                        planets.pop(following)
+                        following = ''
+                if creating:
+                    if confirm_rect.collidepoint(mouse_x, mouse_y):
+                        for i, input_box in enumerate(input_boxes):
+                            result = input_box.handle_event(event)
+                        if all(results):
+                            planet_color = (results[3], results[4], results[5])
+                            create_planet(results[0], results[1], results[2], planet_color ,creating_x, creating_y)
+                            pause(False)
+                            compute_frame(True)
+                    elif not create_rect.collidepoint(mouse_x, mouse_y):
+                        if all(not box.active for box in input_boxes):
+                            creating = False
+                            pause(False)
             elif event.button == 3:
                 mouse_x, mouse_y = event.pos
                 for planet_name, planet in planets.items():
@@ -336,7 +519,7 @@ while True:
                         print(following)
                     elif following == planet_name:
                         following = None
-        if event.type == pygame.MOUSEBUTTONUP:
+        elif event.type == pygame.MOUSEBUTTONUP:
             if event.button == 1:
                 if launching:
                     mouse_x, mouse_y = event.pos
@@ -345,26 +528,39 @@ while True:
                     launching = ''
                     pause(False)
                 moving = False
-        if event.type == pygame.MOUSEWHEEL:
+        elif event.type == pygame.MOUSEWHEEL:
             if camera_mode == 1:
                 mouse_x, mouse_y = pygame.mouse.get_pos()
                 zoom_factor = min(100000,max(0.001, zoom_factor * (1 + event.y * 0.1)))
                 #camera_x, camera_y = kmpx_ratio * 2 * (mouse_x - 1000) /2+camera_x, kmpx_ratio * 2 * (mouse_y - 1000) /2-camera_y
         elif event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_c:
-                camera_mode = 1 if camera_mode == 0 else 0
-            elif event.key == pygame.K_SPACE:
-                pause()
-                if frame_count % 2 == 0:
+            if not writing:
+                if event.key == pygame.K_c:
+                    camera_mode = 1 if camera_mode == 0 else 0
+                    following = ''
+                elif event.key == pygame.K_SPACE:
+                    pause()
+                    if frame_count % 2 == 0:
+                        for planet_name, planet in planets.items():
+                            planet['old_positions'].append(planet['position'])
+                            if len(planet['old_positions']) >= fps * tail_life:
+                                planet['old_positions'].pop(0)
+                elif event.key == pygame.K_r:
+                    real_time = not real_time
+                    dt = 1/fps if real_time else dt_scale
+                elif event.key == pygame.K_p:
+                    real_sizes = not real_sizes
+                elif event.key == pygame.K_q:
+                    creating_x, creating_y = screen_to_space(pygame.mouse.get_pos())
+                    pause(True)
+                    creating = True
+                elif event.key == pygame.K_d:
                     for planet_name, planet in planets.items():
-                        planet['old_positions'].append(planet['position'])
-                        if len(planet['old_positions']) >= fps * tail_life:
-                            planet['old_positions'].pop(0)
-            elif event.key == pygame.K_r:
-                real_time = not real_time
-                dt = 1/fps if real_time else dt_scale
-            elif event.key == pygame.K_p:
-                real_sizes = not real_sizes
+                        planet['old_positions'] = [planet['position']]
+        for i, input_box in enumerate(input_boxes):
+            result=input_box.handle_event(event)
+            if result:
+                results[i] = result
     if moving:
         mouse_x, mouse_y = pygame.mouse.get_pos()
         space_mouse_x, space_mouse_y = screen_to_space((mouse_x, mouse_y))
