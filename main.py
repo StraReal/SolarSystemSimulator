@@ -59,6 +59,7 @@ following = ''
 launching = ''
 moving = False
 paused = False
+real_sizes = False
 
 pygame.init()
 screen_size = 1000
@@ -164,6 +165,10 @@ def space_to_screen(pos, cam_pos=None):
     return ((((x - cam_x) / kmpx_ratio) + 1000) / 2,
     (((y - cam_y) / -kmpx_ratio) + 1000) / 2)
 
+def calculate_planet_size(radius, is_sun=False): #returns radius from radius
+    multiplier = (25 if is_sun else 300) if not real_sizes else 1
+    return radius / kmpx_ratio * multiplier
+
 def draw_space():
     global earth_x, earth_y, n_lines, kmpx_ratio, earth_size, old_positions
     surface.fill((0, 0, 0, 0))
@@ -176,7 +181,7 @@ def draw_space():
         t_camera_x = camera_x
         t_camera_y = camera_y
 
-    sun_size = central_radius * 5 / kmpx_ratio
+    sun_size = calculate_planet_size(central_radius, is_sun=True)
     kmpx_ratio = max_size / screen_size / t_zoom_factor
     visible_area = screen_size * kmpx_ratio
     va_min_x = t_camera_x - visible_area/2
@@ -215,7 +220,7 @@ def draw_space():
     pygame.draw.circle(screen, (200, 100, 10), space_to_screen((0, 0), (t_camera_x, t_camera_y)), sun_size)
 
     for planet_name, planet in planets.items():
-        planet_size = planet['radius'] * 300 / kmpx_ratio
+        planet_size = calculate_planet_size(planet['radius'])
         planet_x, planet_y = space_to_screen(planet['position'], (t_camera_x, t_camera_y))
         pygame.draw.circle(screen, (planet['color']), (planet_x, planet_y), planet_size)
 
@@ -262,7 +267,7 @@ while True:
             if event.button == 1:
                 mouse_x, mouse_y = event.pos
                 for planet_name, planet in planets.items():
-                    if math.hypot(mouse_x - space_to_screen(planet['position'])[0], mouse_y - space_to_screen(planet['position'])[1]) <= planet['radius'] * 300 / kmpx_ratio:
+                    if math.hypot(mouse_x - space_to_screen(planet['position'])[0], mouse_y - space_to_screen(planet['position'])[1]) <= calculate_planet_size(planet['radius']) + 5:
                         launching = planet_name
                         pause(True)
                 if camera_mode == 1 and not launching:
@@ -272,7 +277,7 @@ while True:
             elif event.button == 3:
                 mouse_x, mouse_y = event.pos
                 for planet_name, planet in planets.items():
-                    if math.hypot(mouse_x - space_to_screen(planet['position'])[0], mouse_y - space_to_screen(planet['position'])[1]) <= planet['radius'] * 300 / kmpx_ratio:
+                    if math.hypot(mouse_x - space_to_screen(planet['position'])[0], mouse_y - space_to_screen(planet['position'])[1]) <= calculate_planet_size(planet['radius']) + 5:
                         camera_mode = 1
                         camera_x, camera_y = planet['position']
                         following = planet_name
@@ -283,7 +288,8 @@ while True:
             if event.button == 1:
                 if launching:
                     mouse_x, mouse_y = event.pos
-                    planets[launching]['velocity'] = np.array([space_to_screen(planets[launching]['position'])[0] - mouse_x, -(space_to_screen(planets[launching]['position'])[1] - mouse_y)]) * math.log10(max_size) ** 1.1
+                    space_mouse_x, space_mouse_y = screen_to_space((mouse_x, mouse_y))
+                    planets[launching]['velocity'] = np.array([(planets[launching]['position'])[0] - space_mouse_x, planets[launching]['position'][1] - space_mouse_y]) / 30000
                     launching = ''
                     pause(False)
                     dt=dt_scale
@@ -305,6 +311,8 @@ while True:
                             planet['old_positions'].pop(0)
             elif event.key == pygame.K_r:
                 dt = 1/60 if dt!=1/60 else dt_scale
+            elif event.key == pygame.K_p:
+                real_sizes = not real_sizes
     if moving:
         mouse_x, mouse_y = pygame.mouse.get_pos()
         space_mouse_x, space_mouse_y = screen_to_space((mouse_x, mouse_y))
