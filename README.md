@@ -10,7 +10,7 @@ What this project aims to do is simply simulate interactions between celestial b
 
 - For some reason I still haven't figured out, although everything works perfectly, the velocities are much bigger than real ones.
 
-- In the code, the variable FULL_SYSTEM is False, meaning that Mercury, Uranus and Neptune are removed, to achieve a better-looking system. They can be added back by toggling the variable On.
+- In the code, the variable FULL_SYSTEM is False, meaning that Mercury, Uranus and Neptune are removed, to achieve a better-looking system. They can be added back by making the variable True.
 
 Starting the simulation for the first time will download real planet positions using the Skyfield module, which means it might take a moment to start-up the first time.
 
