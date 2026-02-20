@@ -5,6 +5,7 @@ import numpy as np
 import pygame
 import re
 from collections import deque
+from position_sf import pos
 import time
 
 central_mass = 1.989e30#kg
@@ -34,41 +35,48 @@ planets = {
     'Earth': {
         'mass': 5.972e24,
         'radius': 6371,
-        'distance': 152028425,
-        'angle': 0,
-        'velocity': np.array([-4, -29])*25,
         'color': (14, 100, 168)},
     'Jupiter': {
         'mass': 1.898e27,
         'radius': 69911,
-        'distance': 778547200,
-        'angle': 204.5,
-        'velocity': np.array([-4, 29])*10,
         'color': (217,175,118) },
     'Mars': {
         'mass': 6.417e23,
         'radius': 3389.5,
-        'distance': 149597870,
-        'angle': 282.2,
-        'velocity': np.array([-29, -4])*25,
         'color': (193,68,14) },
     'Venus': {
         'mass': 4.867e24,
         'radius': 6051,
-        'distance': 2.56e8,
-        'angle': 192,
-        'velocity': np.array([-4, 29])*25,
         'color': (240,231,231) },
     'Saturn': {
         'mass': 5.683e26,
         'radius': 58232,
-        'distance': 1.44e9,
-        'angle': 317.4,
-        'velocity': np.array([29, 29]) * 5,
         'color': (205, 133, 63),
-        'has_rings': True}
+        'has_rings': True},
+    'Mercury': {
+        'mass': 3.301e23,
+        'radius': 2439.7,
+        'color': (177,173,173)
+    },
+    'Uranus': {
+        'mass': 8.681e25,
+        'radius': 25362,
+        'color': (40, 53, 55)
+    },
+    'Neptune': {
+        'mass': 1.024e26,
+        'radius': 24622,
+        'color': (64, 78, 88)
+    }
 
-} #mass (kg), radius (km), distance (from the sun) (km), angle (degrees to X+), velocity (km/s)
+} #mass (kg), radius (km),
+
+t = datetime.datetime.now()
+
+FULL_SYSTEM = False # Remove Mercury (spins too fast) and Neptune (too far, dezooms too much)
+SMALL_SYSTEM = False # If True removes Uranus too, making all the planets appear "decently-sized"
+if not FULL_SYSTEM:
+    del planets['Mercury'], planets['Neptune'], planets['Uranus']
 
 following = ''
 launching = ''
@@ -316,7 +324,6 @@ class InputBox:
             switch_rect = self.switch.get_rect(topleft=self.srect.topleft)
             screen.blit(self.switch, switch_rect)
 
-
 inputs = {'Name': {'type':str, 'h':40, 'value':'Planet_Name'},
           'Mass': {'type':float, 'h':40, 'value':'5.972e24'},
           'Radius': {'type':float, 'h':40, 'value':'6371'},
@@ -347,7 +354,34 @@ for name, specs in settings.items():
     setting_objs[name] = (InputBox(name, y, specs['h'], specs['value'], input_type=specs['type'], acceptszero=specs['acceptszero']))
     y += specs['h'] + 20
 
-print(setting_objs['Trail Lifetime (s)'].value, setting_objs)
+gravitational_constant = 6.67430e-11  # m³·kg⁻¹·s⁻²
+
+def calculate_initial_velocity(satellite, central_body=None):
+    if central_body is None:
+        cmass = central_mass
+        cpos  = (0.0, 0.0)
+    else:
+        cmass = central_body['mass']
+        cpos  = central_body['position']
+
+    spos  = satellite['position']
+
+    dx = cpos[0] - spos[0]
+    dy = cpos[1] - spos[1]
+    r  = math.hypot(dx, dy)
+
+    if r == 0:
+        raise ValueError("Satellite and central body occupy the same point")
+
+    speed = math.sqrt(gravitational_constant * cmass / r)
+    tx = -dy / r
+    ty =  dx / r
+
+    vx = speed * tx / 1000
+    vy = speed * ty / 1000
+
+    return vx, vy
+
 def create_planet(name, mass, radius, color, x, y, has_rings=False):
     global planets, creating
     planets[name] = {
@@ -355,7 +389,7 @@ def create_planet(name, mass, radius, color, x, y, has_rings=False):
         'radius': radius,
         'color': color,
         'position': np.array([x, y]),
-        'old_positions': deque(maxlen=round(fps*setting_objs['Trail Lifetime (s)'].value)),
+        'old_positions': deque(maxlen=round(fps*int(setting_objs['Trail Lifetime (s)'].value))),
         'velocity': np.array([0, 0]),
         'has_rings': has_rings,
     }
@@ -393,8 +427,18 @@ def calculate_distance(x1, y1, x2, y2):
 
 #central mass position (sun) is always 0,0.
 for planet_name, planet in planets.items():
-    planet['position'] = calculate_vector(planet['distance'], planet['angle'])
+    pos.init()
+    try:
+        x, y, _ = pos.get_position(planet_name.lower(), date=t)
+        planet['position'] = np.array([x, y])
+    except KeyError:
+        try:
+            x, y, _ = pos.get_position(f'{planet_name.lower()} barycenter', date=t)
+            planet['position'] = np.array([x, y])
+        except KeyError:
+            print(f'{planet_name} is not included in database.')
     planet['old_positions'] = deque(maxlen=round(fps*int(setting_objs['Trail Lifetime (s)'].value)))
+    planet['velocity'] = calculate_initial_velocity(planet)
     if 'has_rings' not in planet:
         planet['has_rings'] = False
 
@@ -410,15 +454,18 @@ def maybe_append(trail, new_pos):
 
 def compute_frame(count_frame=False):
     global velocities, angles, max_size, l2000_max_size, positions, attractions, accelerations, frame_count, camera_x, camera_y, earth_position
+    if frame_count % 2000 == 0 or l2000_max_size > max_size:
+        l2000_max_size = max_size
+    decrease_factor = 0.999 if l2000_max_size >= max_size else 1
     for planet_name, planet in planets.items():
-        attraction = calculate_attraction(central_mass, planet['mass'], (calculate_distance(planet['position'][0], planet['position'][1], 0, 0)-central_radius-planet['radius'])*1000)
+        attraction = calculate_attraction(central_mass, planet['mass'], (calculate_distance(planet['position'][0], planet['position'][1], 0, 0))*1000)
         planet['acceleration'] = calculate_acceleration(attraction, planet['mass'], planet['position'])
         for other_name, other in planets.items():
             if planet_name != other_name:
                 r_vec = np.array(other['position']) - np.array(planet['position'])
                 attraction = calculate_attraction(other['mass'], planet['mass'],
                                                   (calculate_distance(planet['position'][0], planet['position'][1],
-                                                                     other['position'][0], other['position'][1])-other['radius']-planet['radius'])*1000)
+                                                                     other['position'][0], other['position'][1]))*1000)
                 planet['acceleration'] += calculate_acceleration(attraction, planet['mass'], -r_vec)
         planet['velocity'] = calculate_velocity(planet['velocity'], planet['acceleration'], dt)
         planet['angle'] = calculate_angle(planet['velocity'])
@@ -428,22 +475,15 @@ def compute_frame(count_frame=False):
         count_frame = count_frame or frame_count % 2 == 0
         if count_frame:
             maybe_append(planet['old_positions'], planet['position'])
+        follow_position = planet['position'] if not following else planets[following]['position']
+        max_size = max(max_size * decrease_factor, abs(follow_position[0]) * 1.1, abs(follow_position[1]) * 1.1)
 
-    if camera_mode == 2:
-        camera_x, camera_y = earth_position
-    if frame_count % 2000 == 0 or l2000_max_size > max_size:
-        l2000_max_size = max_size
-    decrease_factor = 0.999 if l2000_max_size >= max_size else 1
-    follow_position = earth_position if not following else planets[following]['position']
-    max_size = max(max_size*decrease_factor, abs(follow_position[0]) * 1.1, abs(follow_position[1]) * 1.1)
 compute_frame()
 
 print('(Relative to the sun) x:', planets['Earth']['position'][0], ' y:', planets['Earth']['position'][1])
 print('Acceleration:', planets['Earth']['acceleration'])
 print('Velocity:', planets['Earth']['velocity'])
 print('Angle:', planets['Earth']['angle'])
-
-t = datetime.datetime(2026, 6, 21, 0, 0, 0)
 print(t)
 
 def screen_to_space(pos):
@@ -483,15 +523,13 @@ def draw_space():
     surface.fill((0, 0, 0, 0))
 
     if camera_mode == 0:
-        t_zoom_factor = 1
         t_camera_x = 0
         t_camera_y = 0
     else:
-        t_zoom_factor = zoom_factor
         t_camera_x = camera_x
         t_camera_y = camera_y
 
-    kmpx_ratio = max_size / screen_size / t_zoom_factor
+    kmpx_ratio = max_size / screen_size / zoom_factor
     sun_size = calculate_planet_size(central_radius, is_sun=True)
     visible_area = screen_size * kmpx_ratio
     va_min_x = t_camera_x - visible_area/2
@@ -697,6 +735,8 @@ while True:
                         if delete_rect.collidepoint(mouse_x, mouse_y):
                             planets.pop(following)
                             following = ''
+            elif event.button == 2:
+                zoom_factor = 1
             elif event.button == 3:
                 mouse_x, mouse_y = event.pos
                 for planet_name, planet in planets.items():
@@ -717,14 +757,13 @@ while True:
                     pause(False)
                 moving = False
         elif event.type == pygame.MOUSEWHEEL:
-            if camera_mode == 1:
-                mouse_x, mouse_y = pygame.mouse.get_pos()
-                zoom_factor = min(100000,max(0.001, zoom_factor * (1 + event.y * 0.1)))
-                #camera_x, camera_y = kmpx_ratio * 2 * (mouse_x - 1000) /2+camera_x, kmpx_ratio * 2 * (mouse_y - 1000) /2-camera_y
+            mouse_x, mouse_y = pygame.mouse.get_pos()
+            zoom_factor = min(100000,max(0.001, zoom_factor * (1 + event.y * 0.1)))
         elif event.type == pygame.KEYDOWN:
             if not writing:
                 if event.key == pygame.K_c:
                     camera_mode = 1 if camera_mode == 0 else 0
+                    zoom_factor = 1 if camera_mode == 0 else zoom_factor
                     following = ''
                 elif event.key == pygame.K_SPACE:
                     pause()
