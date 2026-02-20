@@ -12,6 +12,8 @@ Right Click (on planet) - Follow planet, stop following by right-clicking anywhe
 
 Mouse Wheel - Zoom
 
+S - Toggle Settings
+
 Q - Create planet at current mouse position
 
 R - Real-Time mode; time will pass at 1:1 to real life.

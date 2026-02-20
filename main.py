@@ -3,6 +3,9 @@ import math
 from math import degrees, radians
 import numpy as np
 import pygame
+import re
+from collections import deque
+import time
 
 central_mass = 1.989e30#kg
 
@@ -15,8 +18,13 @@ kmpx_ratio = np.float64(1)
 l2000_max_size = max_size
 n_lines = 10
 tail_life = 20
+min_trail_dist = 3500000
 
 gravitational_constant = 6.674e-11#N*m^2/kg^2
+
+SCI_NOTATION_RE = re.compile(
+    r'^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$'
+)
 
 fps = 60
 dt_scale = 60*24*3 #seconds per frame (with 60fps, having this at 3600 would mean 60 hours per second, or 2 days and a half per second)
@@ -51,7 +59,15 @@ planets = {
         'distance': 2.56e8,
         'angle': 192,
         'velocity': np.array([-4, 29])*25,
-        'color': (240,231,231) }
+        'color': (240,231,231) },
+    'Saturn': {
+        'mass': 5.683e26,
+        'radius': 58232,
+        'distance': 1.44e9,
+        'angle': 317.4,
+        'velocity': np.array([29, 29]) * 5,
+        'color': (205, 133, 63),
+        'has_rings': True}
 
 } #mass (kg), radius (km), distance (from the sun) (km), angle (degrees to X+), velocity (km/s)
 
@@ -63,6 +79,7 @@ real_sizes = False
 real_time = False
 creating = False
 writing = False
+settings_on = False
 
 pygame.init()
 pygame.key.set_repeat(300, 30)
@@ -113,26 +130,72 @@ clock_rect = pygame.Rect(10, 10, 300, 40)
 pos_rect = pygame.Rect(screen_size-300-10, 10, 300, 40)
 
 class InputBox:
-    def __init__(self, x, y, w, h, text='', input_type=type):
-        self.orig_rect = pygame.Rect(x, y, w, h)
-        self.rect = pygame.Rect(x, y, w, h)
+    def __init__(self, name, y, h, value='', input_type: type =bool, anim_time=0.3, acceptszero=False):
+        self.name = name
         self.color_inactive = pygame.Color('lightskyblue3')
         self.color_active   = pygame.Color('dodgerblue2')
         self.color = self.color_inactive
-        self.text = text
-        self.txt_surface = clock_font.render(text, True, pygame.Color('white'))
-        self.active = False
+        self.acceptszero = acceptszero
         self.input_type = input_type
-        pygame.scrap.init()
-        pygame.scrap.set_mode(pygame.SCRAP_CLIPBOARD)
+
+        w, _ = clock_font.size(self.name)
+        self.trect = pygame.Rect(create_rect.left + 0.66,
+                                 create_rect.top + 60 + y,
+                                 w + 20,
+                                 h)
+
+
+        if value is not None:
+            self.value = value
+        else:
+            try:
+                self.value = self.input_type()
+            except Exception as exc:
+                raise TypeError(
+                    f"The type {self.input_type!r} cannot be instantiated without arguments; "
+                    "provide an explicit defaultvalue."
+                ) from exc
+
+        self.txt_input = self.input_type in (int, float, str)
+        if self.txt_input:
+            self.value = str(self.value)
+            left=max(w + 20, int(create_rect.width * 0.11))
+            self.orig_rect = pygame.Rect(create_rect.left + left, create_rect.top + 60 + y, create_rect.width-left-20, h)
+            self.rect = self.orig_rect.copy()
+            self.txt_surface = clock_font.render(str(value), True, pygame.Color('white'))
+            self.active = False
+            pygame.scrap.init()
+            pygame.scrap.set_mode(pygame.SCRAP_CLIPBOARD)
+
+        elif self.input_type is bool:
+            self.settinglength = 98
+
+            self.srect = pygame.Rect(create_rect.left + 0.66 + w + 20, create_rect.top + 60 + y, self.settinglength, h)
+
+            self._anim_time = anim_time  # seconds for a full toggle
+            self._anim_dir = 0
+            self.frames_per_toggle = int(fps * self._anim_time)
+            self._frames_elapsed = 0
+
+
+            self._frames = [
+                pygame.transform.scale(pygame.image.load(f'assets/Switch_{i + 1}-5.png').convert_alpha(), (self.srect.width,
+                                                         self.srect.height))
+                for i in range(5)
+            ]
+
+            if self.value:
+                self.switch = self._frames[4]
+                self._frames_elapsed = 18
+            else:
+                self.switch=self._frames[0]
+
+            self._update_values()
 
     def _isvalid(self):
         """Return True if `self.raw_text` can be cast to `self.input_type`."""
         try:
-            if self.input_type is bool:
-                lowered = self.text.strip().lower()
-                return lowered in ('true', 'false', '1', '0', 'yes', 'no', 'y', 'n')
-            self.input_type(self.text)
+            self.input_type(self.value)
             return True
         except Exception:
             return False
@@ -148,70 +211,249 @@ class InputBox:
         self.color = self.color_active if self.active else self.color_inactive
         writing = writing or self.active
 
+    def toggle(self):
+        self.value = not self.value
+
+        self._anim_dir = 1 if self.value else -1
+        if self._frames_elapsed < 0:
+            self._frames_elapsed = 0
+            self._anim_dir = 0
+        elif self._frames_elapsed > self.frames_per_toggle:
+            self._frames_elapsed = self.frames_per_toggle
+            self._anim_dir = 0
+
+        self._update_image()
+
+    def _smoothstep(self, x):
+        return 3 * x * x - 2 * x**3
+
+    def _update_image(self):
+        p = self._frames_elapsed / self.frames_per_toggle if self.frames_per_toggle else 1.0
+        p = max(0.0, min(1.0, p))  # clamp
+        p = self._smoothstep(p)
+
+        frame_idx = int(round(p * (len(self._frames) - 1)))
+        self.switch = self._frames[frame_idx]
+
+    def _update_values(self, event=None):
+        if event is None:
+            pos = -1, -1
+        else:
+            pos = event.pos
+        if self.txt_input:
+            self._activate(self.rect.collidepoint(pos))
+            if not self.active:
+                entered = self.value
+                if self._isvalid():
+                    entered = self.input_type(entered)
+                    self._activate(False)
+                    return entered
+                return None
+        elif self.input_type is bool:
+            if self.srect.collidepoint(pos):
+                self.toggle()
+                return self.value
+            return None
+
     def handle_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN:
-            self._activate(self.rect.collidepoint(event.pos))
-            if not self.active:
-                entered = self.text
-                if self._isvalid():
-                    entered = self.input_type(entered)
-                    self._activate(False)
-                    return entered
-                return None
+            return self._update_values(event)
+        if event.type == pygame.KEYDOWN:
+            if self.txt_input and self.active:
+                if event.key == pygame.K_RETURN:
+                    entered = self.value
+                    if self._isvalid():
+                        entered = self.input_type(entered)
+                        self._activate(False)
+                        return entered
+                    return None
+                elif event.key == pygame.K_BACKSPACE:
+                    self.value = self.value[:-1]
+                else:
+                    self.value += self._clean_text(event.unicode)
+                self.txt_surface = clock_font.render(self.value, True, pygame.Color('white'))
+                ctrl = pygame.key.get_mods() & pygame.KMOD_CTRL
 
-        if event.type == pygame.KEYDOWN and self.active:
-            if event.key == pygame.K_RETURN:
-                entered = self.text
-                if self._isvalid():
-                    entered = self.input_type(entered)
-                    self._activate(False)
-                    return entered
-                return None
-            elif event.key == pygame.K_BACKSPACE:
-                self.text = self.text[:-1]
-            else:
-                self.text += self._clean_text(event.unicode)
-            self.txt_surface = clock_font.render(self.text, True, pygame.Color('white'))
-            ctrl = pygame.key.get_mods() & pygame.KMOD_CTRL
-
-            if ctrl and event.key == pygame.K_v:  # Paste
-                try:
-                    clip = pygame.scrap.get(pygame.SCRAP_TEXT)
-                    if clip:
-                        print(clip)
-                        paste_text = clip.decode('utf-8')
-                        self.text += self._clean_text(paste_text)
-                        self.txt_surface = clock_font.render(self.text, True, pygame.Color('white'))
-                except Exception:
-                    pass
-                return None
+                if ctrl and event.key == pygame.K_v:  # Paste
+                    try:
+                        clip = pygame.scrap.get(pygame.SCRAP_TEXT)
+                        if clip:
+                            paste_text = clip.decode('utf-8')
+                            self.value += self._clean_text(paste_text)
+                            self.txt_surface = clock_font.render(self.value, True, pygame.Color('white'))
+                    except Exception:
+                        pass
+                    return None
 
     def update(self):
-        width = max(self.orig_rect.w, self.txt_surface.get_width() + 10)
-        self.rect.w = width
+        if self.txt_input:
+            width = max(self.orig_rect.w, self.txt_surface.get_width() + 10)
+            self.rect.w = width
+        elif self.input_type is bool:
+            if self._anim_dir == 0:
+                return
+
+            self._frames_elapsed += self._anim_dir
+            if self._frames_elapsed <= 0:
+                self._frames_elapsed = 0
+                self._anim_dir = 0
+            elif self._frames_elapsed >= self.frames_per_toggle:
+                self._frames_elapsed = self.frames_per_toggle
+                self._anim_dir = 0
+            self._update_image()
 
     def draw(self, surface):
-        surface.blit(self.txt_surface, (self.rect.x + 5, self.rect.y + 5))
-        pygame.draw.rect(surface, self.color, self.rect, 2)
+        text = self.name
+        text_surface = clock_font.render(text, True, (255, 255, 255))
+        text_rect = text_surface.get_rect(center=self.trect.center)
+        screen.blit(text_surface, text_rect)
 
-inputs = [('Name', str), ('Mass', float), ('Radius', float), ('R', int), ('G',int), ('B', int)]
-input_titles = []
+        if self.txt_input:
+            surface.blit(self.txt_surface, (self.rect.x + 5, self.rect.y + 5))
+            pygame.draw.rect(surface, self.color, self.rect, 2)
+        elif self.input_type is bool:
+            switch_rect = self.switch.get_rect(topleft=self.srect.topleft)
+            screen.blit(self.switch, switch_rect)
+
+
+inputs = {'Name': {'type':str, 'h':40, 'value':'Planet_Name'},
+          'Mass': {'type':float, 'h':40, 'value':'5.972e24'},
+          'Radius': {'type':float, 'h':40, 'value':'6371'},
+          'R': {"type":int, 'h':40, 'value':14,'acceptszero':True,}, 'G':{'type':int, 'h':40, 'value':100,'acceptszero':True,}, 'B':{'type':int, 'h':40, 'value':168,'acceptszero':True,},
+          'Has Rings': {'type':bool, 'h':42, 'value':False}}
+
 input_boxes=[]
 results=[]
-for i, title in enumerate(inputs):
+y=0
+for name, vars in inputs.items():
     results.append(None)
-    input_titles.append(pygame.Rect(create_rect.left + create_rect.width*0.02, create_rect.top + 60 + 60*i, create_rect.width * 0.1, 40))
-    input_boxes.append(InputBox(create_rect.left + create_rect.width*0.14, create_rect.top + 60 + 60*i, create_rect.width * 0.73, 35, input_type=title[1]))
+    if not 'h' in vars:
+        vars['h'] = 40
+    if not 'acceptszero' in vars:
+        vars['acceptszero'] = False
+    print(vars)
+    input_boxes.append(InputBox(name, y, vars['h'], vars['value'], vars['type'], acceptszero=vars['acceptszero']))
+    y+=vars['h'] + 20
 
-def create_planet(name, mass, radius, color, x, y):
+#TODO merge Setting class with InputBox class
+class Setting:
+    def __init__(self, name, y, h=40, value=None, type=bool, anim_time = 0.3):
+        self.type = type
+        self.name = name
+        if value is not None:
+            self.value = value
+        else:
+            try:
+                self.value = self.type()
+            except Exception as exc:
+                raise TypeError(
+                    f"The type {self.type!r} cannot be instantiated without arguments; "
+                    "provide an explicit defaultvalue."
+                ) from exc
+        w, _ = clock_font.size(self.name)
+        self.trect = pygame.Rect(create_rect.left + 0.66,
+                                 create_rect.top + 60 + y,
+                                 w + 20,
+                                 h)
+
+        if type==bool:
+            self.settinglength = 98
+
+            self.srect = pygame.Rect(create_rect.left + 0.66 + w + 20, create_rect.top + 60 + y, self.settinglength, h)
+
+            self._anim_time = anim_time  # seconds for a full toggle
+            self._anim_dir = 0
+            self.frames_per_toggle = int(fps * self._anim_time)
+            self._frames_elapsed = 0
+
+
+            self._frames = [
+                pygame.transform.scale(pygame.image.load(f'assets/Switch_{i + 1}-5.png').convert_alpha(), (self.srect.width,
+                                                         self.srect.height))
+                for i in range(5)
+            ]
+
+            if self.value:
+                self.switch = self._frames[4]
+                self._frames_elapsed = 18
+            else:
+                self.switch=self._frames[0]
+
+    def __repr__(self):
+        return self.name + '=' + str(self.value)
+
+    def toggle(self):
+        self.value = not self.value
+
+        self._anim_dir = 1 if self.value else -1
+        if self._frames_elapsed < 0:
+            self._frames_elapsed = 0
+            self._anim_dir = 0
+        elif self._frames_elapsed > self.frames_per_toggle:
+            self._frames_elapsed = self.frames_per_toggle
+            self._anim_dir = 0
+
+        self._update_image()
+    def _smoothstep(self, x):
+        return 3 * x * x - 2 * x**3
+
+    def _update_image(self):
+        p = self._frames_elapsed / self.frames_per_toggle if self.frames_per_toggle else 1.0
+        p = max(0.0, min(1.0, p))  # clamp
+        p = self._smoothstep(p)
+
+        frame_idx = int(round(p * (len(self._frames) - 1)))
+        self.switch = self._frames[frame_idx]
+
+    def handle_event(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            if self.type is bool:
+                if self.srect.collidepoint(event.pos):
+                    self.toggle()
+                    return self.value
+        return None
+
+    def update(self):
+        if self._anim_dir == 0:
+            return
+
+        self._frames_elapsed += self._anim_dir
+        if self._frames_elapsed <= 0:
+            self._frames_elapsed = 0
+            self._anim_dir = 0
+        elif self._frames_elapsed >= self.frames_per_toggle:
+            self._frames_elapsed = self.frames_per_toggle
+            self._anim_dir = 0
+
+        self._update_image()
+
+    def draw(self):
+        text = self.name
+        text_surface = clock_font.render(text, True, (255, 255, 255))
+        text_rect = text_surface.get_rect(center=self.trect.center)
+        screen.blit(text_surface, text_rect)
+
+        if self.type is bool:
+            switch_rect = self.switch.get_rect(topleft=self.srect.topleft)
+            screen.blit(self.switch, switch_rect)
+
+settings = [[True, 'Transparent Trails', 42, bool],]
+setting_objs = []
+y=0
+for setting in settings:
+    setting_objs.append(Setting(setting[1], y, h=setting[2], value=setting[0], type=setting[3]))
+    y += setting[2]
+
+def create_planet(name, mass, radius, color, x, y, has_rings=False):
     global planets, creating
     planets[name] = {
         'mass': mass,
         'radius': radius,
         'color': color,
         'position': np.array([x, y]),
-        'old_positions': [],
+        'old_positions': deque(maxlen=fps*tail_life),
         'velocity': np.array([0, 0]),
+        'has_rings': has_rings,
     }
     creating=False
 
@@ -248,7 +490,19 @@ def calculate_distance(x1, y1, x2, y2):
 #central mass position (sun) is always 0,0.
 for planet_name, planet in planets.items():
     planet['position'] = calculate_vector(planet['distance'], planet['angle'])
-    planet['old_positions'] = []
+    planet['old_positions'] = deque(maxlen=fps*tail_life)
+    if 'has_rings' not in planet:
+        planet['has_rings'] = False
+
+def maybe_append(trail, new_pos):
+    if not trail:
+        trail.append(new_pos)
+        return
+
+    last = trail[-1]
+    dx, dy = new_pos[0] - last[0], new_pos[1] - last[1]
+    if math.hypot(dx, dy) >= min_trail_dist:
+        trail.append(new_pos)
 
 def compute_frame(count_frame=False):
     global velocities, angles, max_size, l2000_max_size, positions, attractions, accelerations, frame_count, camera_x, camera_y, earth_position
@@ -269,9 +523,7 @@ def compute_frame(count_frame=False):
             earth_position = planet['position']
         count_frame = count_frame or frame_count % 2 == 0
         if count_frame:
-            planet['old_positions'].append(planet['position'])
-            if len(planet['old_positions']) >= fps*tail_life:
-                planet['old_positions'].pop(0)
+            maybe_append(planet['old_positions'], planet['position'])
     if camera_mode == 2:
         camera_x, camera_y = earth_position
     if frame_count % 2000 == 0 or l2000_max_size > max_size:
@@ -307,10 +559,19 @@ def calculate_planet_size(radius, is_sun=False): #returns radius from radius
 
 def is_color_valid(col):
     try:
+        #print(col)
         pygame.Color(col)
         return True
     except Exception:
         return False
+
+def is_scientific_number(txt: str) -> bool:
+    """Return True if *txt* is a valid float written in scientific notation
+    (plain decimal numbers are also accepted)."""
+    # Empty string is allowed while the user is still typing
+    if txt == '':
+        return True
+    return bool(SCI_NOTATION_RE.fullmatch(txt))
 
 def draw_space():
     global earth_x, earth_y, n_lines, kmpx_ratio, earth_size, old_positions,writing
@@ -370,6 +631,8 @@ def draw_space():
         else:
             planet_x, planet_y = space_to_screen(planet['position'], (t_camera_x, t_camera_y))
         pygame.draw.circle(screen, (planet['color']), (planet_x, planet_y), planet_size)
+        if planet['has_rings']:
+            pygame.draw.circle(screen, (planet['color']), (planet_x, planet_y), int(planet_size*1.3), int(planet_size * 0.15))
 
         end_pos = (int(planet_x + planet['velocity'][0] * fps * 180 / kmpx_ratio),
                    int(planet_y + planet['velocity'][1] * fps * 180 / -kmpx_ratio))
@@ -383,11 +646,17 @@ def draw_space():
             pygame.draw.line(screen, (200, 0, 0), (planet_x, planet_y), end_pos, 5)
         if planet_name == 'Earth':
             earth_x, earth_y, earth_size = planet_x, planet_y, planet_size
-        for i in range(len(planet['old_positions']) - 1):
-            pos = space_to_screen(planet['old_positions'][i], (t_camera_x, t_camera_y))
-            pos2 = space_to_screen(planet['old_positions'][i + 1], (t_camera_x, t_camera_y))
-            alpha = i / len(planet['old_positions']) * 255
-            pygame.draw.line(surface, (150, 150, 180, alpha), pos, pos2, 2)
+
+        if setting_objs[0].value:
+            for i in range(len(planet['old_positions']) - 1):
+                pos = space_to_screen(planet['old_positions'][i], (t_camera_x, t_camera_y))
+                pos2 = space_to_screen(planet['old_positions'][i + 1], (t_camera_x, t_camera_y))
+                alpha = i / len(planet['old_positions']) * 255
+                pygame.draw.line(surface, (150, 150, 180, alpha), pos, pos2, 2)
+        else:
+            screen_points = [space_to_screen(p, (t_camera_x, t_camera_y)) for p in planet['old_positions']]
+            pygame.draw.lines(screen, (150, 150, 180), False, screen_points, 2)
+
         lpos = space_to_screen(planet['old_positions'][-1], (t_camera_x, t_camera_y))
         pygame.draw.line(screen, (150, 150, 180), lpos, (planet_x, planet_y), 2)
         screen.blit(surface, (0, 0))
@@ -448,11 +717,6 @@ def draw_space():
         text_surface = title_font.render(text, True, (255, 255, 255))
         text_rect = text_surface.get_rect(center=create_text_rect.center)
         screen.blit(text_surface, text_rect)
-        for i, input_title_rect in enumerate(input_titles):
-            text = inputs[i][0]
-            text_surface = clock_font.render(text, True, (255, 255, 255))
-            text_rect = text_surface.get_rect(midleft=input_title_rect.midleft)
-            screen.blit(text_surface, text_rect)
         for input_box in input_boxes:
             input_box.update()
             input_box.draw(screen)
@@ -467,6 +731,15 @@ def draw_space():
             pygame.draw.rect(screen, sel_color, color_rect)
         else:
             pygame.draw.rect(screen, (0,0,0), color_rect)
+    elif settings_on:
+        pygame.draw.rect(screen, (50, 50, 50), create_rect)
+        text = "Settings"
+        text_surface = title_font.render(text, True, (255, 255, 255))
+        text_rect = text_surface.get_rect(center=create_text_rect.center)
+        screen.blit(text_surface, text_rect)
+        for setting in setting_objs:
+            setting.update()
+            setting.draw()
     else:
         writing=False
 
@@ -500,15 +773,23 @@ while True:
                     if confirm_rect.collidepoint(mouse_x, mouse_y):
                         for i, input_box in enumerate(input_boxes):
                             result = input_box.handle_event(event)
-                        if all(results):
+                            if (not input_box.acceptszero) and isinstance(result, int) and result == 0:
+                                result=None
+                            if result is not None:
+                                results[i] = result
+                        if all(r is not None for r in results):
                             planet_color = (results[3], results[4], results[5])
-                            create_planet(results[0], results[1], results[2], planet_color ,creating_x, creating_y)
+                            create_planet(results[0], results[1], results[2], planet_color ,creating_x, creating_y, results[6])
                             pause(False)
                             compute_frame(True)
                     elif not create_rect.collidepoint(mouse_x, mouse_y):
                         if all(not box.active for box in input_boxes):
                             creating = False
                             pause(False)
+                elif settings_on:
+                    if not create_rect.collidepoint(mouse_x, mouse_y):
+                        settings_on = False
+                        pause(False)
             elif event.button == 3:
                 mouse_x, mouse_y = event.pos
                 for planet_name, planet in planets.items():
@@ -543,8 +824,6 @@ while True:
                     if frame_count % 2 == 0:
                         for planet_name, planet in planets.items():
                             planet['old_positions'].append(planet['position'])
-                            if len(planet['old_positions']) >= fps * tail_life:
-                                planet['old_positions'].pop(0)
                 elif event.key == pygame.K_r:
                     real_time = not real_time
                     dt = 1/fps if real_time else dt_scale
@@ -557,10 +836,21 @@ while True:
                 elif event.key == pygame.K_d:
                     for planet_name, planet in planets.items():
                         planet['old_positions'] = [planet['position']]
-        for i, input_box in enumerate(input_boxes):
-            result=input_box.handle_event(event)
-            if result:
-                results[i] = result
+                elif event.key == pygame.K_s:
+                    settings_on = not settings_on
+                    pause(settings_on)
+        if creating:
+            for i, input_box in enumerate(input_boxes):
+                result=input_box.handle_event(event)
+                if (not input_box.acceptszero) and (type(result) ==int) and result == 0:
+                    result = None
+                if result is not None:
+                    results[i] = result
+        if settings_on:
+            for i, setting in enumerate(setting_objs):
+                result=setting.handle_event(event)
+                if result is not None:
+                    settings[0]=result
     if moving:
         mouse_x, mouse_y = pygame.mouse.get_pos()
         space_mouse_x, space_mouse_y = screen_to_space((mouse_x, mouse_y))
