@@ -7,8 +7,6 @@ import re
 from collections import deque
 import time
 
-#TODO Find what's causing massive slowing-down after lot of uptime
-
 central_mass = 1.989e30#kg
 
 central_radius = 695508#km
