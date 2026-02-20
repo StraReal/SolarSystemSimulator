@@ -7,6 +7,8 @@ import re
 from collections import deque
 import time
 
+#TODO Find what's causing massive slowing-down after lot of uptime
+
 central_mass = 1.989e30#kg
 
 central_radius = 695508#km
@@ -17,7 +19,6 @@ earth_size = 1
 kmpx_ratio = np.float64(1)
 l2000_max_size = max_size
 n_lines = 10
-tail_life = 20
 min_trail_dist = 3500000
 
 gravitational_constant = 6.674e-11#N*m^2/kg^2
@@ -27,7 +28,7 @@ SCI_NOTATION_RE = re.compile(
 )
 
 fps = 60
-dt_scale = 60*24*3 #seconds per frame (with 60fps, having this at 3600 would mean 60 hours per second, or 2 days and a half per second)
+dt_scale = 60*24*6 #seconds per frame (with 60fps, having this at 3600 would mean 60 hours per second, or 2 days and a half per second)
 dt = dt_scale
 frame_count = 0
 
@@ -144,7 +145,6 @@ class InputBox:
                                  w + 20,
                                  h)
 
-
         if value is not None:
             self.value = value
         else:
@@ -177,7 +177,7 @@ class InputBox:
             self.frames_per_toggle = int(fps * self._anim_time)
             self._frames_elapsed = 0
 
-
+            self.active = False
             self._frames = [
                 pygame.transform.scale(pygame.image.load(f'assets/Switch_{i + 1}-5.png').convert_alpha(), (self.srect.width,
                                                          self.srect.height))
@@ -190,7 +190,10 @@ class InputBox:
             else:
                 self.switch=self._frames[0]
 
-            self._update_values()
+    def __repr__(self):
+        return f"'{self.name}'={self.value} (type={self.input_type}, ac_0: {self.acceptszero})"
+    def __str__(self):
+        return f'{self.name}, of type: {self.input_type}, is equal to {self.value}'
 
     def _isvalid(self):
         """Return True if `self.raw_text` can be cast to `self.input_type`."""
@@ -253,7 +256,7 @@ class InputBox:
             if self.srect.collidepoint(pos):
                 self.toggle()
                 return self.value
-            return None
+            return self.value
 
     def handle_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN:
@@ -331,119 +334,22 @@ for name, vars in inputs.items():
         vars['h'] = 40
     if not 'acceptszero' in vars:
         vars['acceptszero'] = False
-    print(vars)
     input_boxes.append(InputBox(name, y, vars['h'], vars['value'], vars['type'], acceptszero=vars['acceptszero']))
     y+=vars['h'] + 20
 
-#TODO merge Setting class with InputBox class
-class Setting:
-    def __init__(self, name, y, h=40, value=None, type=bool, anim_time = 0.3):
-        self.type = type
-        self.name = name
-        if value is not None:
-            self.value = value
-        else:
-            try:
-                self.value = self.type()
-            except Exception as exc:
-                raise TypeError(
-                    f"The type {self.type!r} cannot be instantiated without arguments; "
-                    "provide an explicit defaultvalue."
-                ) from exc
-        w, _ = clock_font.size(self.name)
-        self.trect = pygame.Rect(create_rect.left + 0.66,
-                                 create_rect.top + 60 + y,
-                                 w + 20,
-                                 h)
-
-        if type==bool:
-            self.settinglength = 98
-
-            self.srect = pygame.Rect(create_rect.left + 0.66 + w + 20, create_rect.top + 60 + y, self.settinglength, h)
-
-            self._anim_time = anim_time  # seconds for a full toggle
-            self._anim_dir = 0
-            self.frames_per_toggle = int(fps * self._anim_time)
-            self._frames_elapsed = 0
-
-
-            self._frames = [
-                pygame.transform.scale(pygame.image.load(f'assets/Switch_{i + 1}-5.png').convert_alpha(), (self.srect.width,
-                                                         self.srect.height))
-                for i in range(5)
-            ]
-
-            if self.value:
-                self.switch = self._frames[4]
-                self._frames_elapsed = 18
-            else:
-                self.switch=self._frames[0]
-
-    def __repr__(self):
-        return self.name + '=' + str(self.value)
-
-    def toggle(self):
-        self.value = not self.value
-
-        self._anim_dir = 1 if self.value else -1
-        if self._frames_elapsed < 0:
-            self._frames_elapsed = 0
-            self._anim_dir = 0
-        elif self._frames_elapsed > self.frames_per_toggle:
-            self._frames_elapsed = self.frames_per_toggle
-            self._anim_dir = 0
-
-        self._update_image()
-    def _smoothstep(self, x):
-        return 3 * x * x - 2 * x**3
-
-    def _update_image(self):
-        p = self._frames_elapsed / self.frames_per_toggle if self.frames_per_toggle else 1.0
-        p = max(0.0, min(1.0, p))  # clamp
-        p = self._smoothstep(p)
-
-        frame_idx = int(round(p * (len(self._frames) - 1)))
-        self.switch = self._frames[frame_idx]
-
-    def handle_event(self, event):
-        if event.type == pygame.MOUSEBUTTONDOWN:
-            if self.type is bool:
-                if self.srect.collidepoint(event.pos):
-                    self.toggle()
-                    return self.value
-        return None
-
-    def update(self):
-        if self._anim_dir == 0:
-            return
-
-        self._frames_elapsed += self._anim_dir
-        if self._frames_elapsed <= 0:
-            self._frames_elapsed = 0
-            self._anim_dir = 0
-        elif self._frames_elapsed >= self.frames_per_toggle:
-            self._frames_elapsed = self.frames_per_toggle
-            self._anim_dir = 0
-
-        self._update_image()
-
-    def draw(self):
-        text = self.name
-        text_surface = clock_font.render(text, True, (255, 255, 255))
-        text_rect = text_surface.get_rect(center=self.trect.center)
-        screen.blit(text_surface, text_rect)
-
-        if self.type is bool:
-            switch_rect = self.switch.get_rect(topleft=self.srect.topleft)
-            screen.blit(self.switch, switch_rect)
-
-settings = [[True, 'Transparent Trails', 42, bool],]
-setting_objs = []
+settings = {'Transparent Trails': {'type':bool, 'h':42, 'value':True},
+            'Trail Lifetime (s)': {'type':float, 'h':40, 'value':20,'acceptszero':True},}
+setting_objs = {}
 y=0
-for setting in settings:
-    setting_objs.append(Setting(setting[1], y, h=setting[2], value=setting[0], type=setting[3]))
-    y += setting[2]
+for name, specs in settings.items():
+    if not 'h' in specs:
+        specs['h'] = 40
+    if not 'acceptszero' in specs:
+        specs['acceptszero'] = False
+    setting_objs[name] = (InputBox(name, y, specs['h'], specs['value'], input_type=specs['type'], acceptszero=specs['acceptszero']))
+    y += specs['h'] + 20
 
+print(setting_objs['Trail Lifetime (s)'].value, setting_objs)
 def create_planet(name, mass, radius, color, x, y, has_rings=False):
     global planets, creating
     planets[name] = {
@@ -451,7 +357,7 @@ def create_planet(name, mass, radius, color, x, y, has_rings=False):
         'radius': radius,
         'color': color,
         'position': np.array([x, y]),
-        'old_positions': deque(maxlen=fps*tail_life),
+        'old_positions': deque(maxlen=round(fps*setting_objs['Trail Lifetime (s)'].value)),
         'velocity': np.array([0, 0]),
         'has_rings': has_rings,
     }
@@ -490,7 +396,7 @@ def calculate_distance(x1, y1, x2, y2):
 #central mass position (sun) is always 0,0.
 for planet_name, planet in planets.items():
     planet['position'] = calculate_vector(planet['distance'], planet['angle'])
-    planet['old_positions'] = deque(maxlen=fps*tail_life)
+    planet['old_positions'] = deque(maxlen=round(fps*int(setting_objs['Trail Lifetime (s)'].value)))
     if 'has_rings' not in planet:
         planet['has_rings'] = False
 
@@ -524,6 +430,7 @@ def compute_frame(count_frame=False):
         count_frame = count_frame or frame_count % 2 == 0
         if count_frame:
             maybe_append(planet['old_positions'], planet['position'])
+
     if camera_mode == 2:
         camera_x, camera_y = earth_position
     if frame_count % 2000 == 0 or l2000_max_size > max_size:
@@ -647,18 +554,19 @@ def draw_space():
         if planet_name == 'Earth':
             earth_x, earth_y, earth_size = planet_x, planet_y, planet_size
 
-        if setting_objs[0].value:
+        if setting_objs['Transparent Trails'].value:
             for i in range(len(planet['old_positions']) - 1):
                 pos = space_to_screen(planet['old_positions'][i], (t_camera_x, t_camera_y))
                 pos2 = space_to_screen(planet['old_positions'][i + 1], (t_camera_x, t_camera_y))
                 alpha = i / len(planet['old_positions']) * 255
                 pygame.draw.line(surface, (150, 150, 180, alpha), pos, pos2, 2)
         else:
-            screen_points = [space_to_screen(p, (t_camera_x, t_camera_y)) for p in planet['old_positions']]
-            pygame.draw.lines(screen, (150, 150, 180), False, screen_points, 2)
-
-        lpos = space_to_screen(planet['old_positions'][-1], (t_camera_x, t_camera_y))
-        pygame.draw.line(screen, (150, 150, 180), lpos, (planet_x, planet_y), 2)
+            if len(planet['old_positions']) > 1:
+                screen_points = [space_to_screen(p, (t_camera_x, t_camera_y)) for p in planet['old_positions']]
+                pygame.draw.lines(screen, (150, 150, 180), False, screen_points, 2)
+        if len(planet['old_positions']) > 0:
+            lpos = space_to_screen(planet['old_positions'][-1], (t_camera_x, t_camera_y))
+            pygame.draw.line(screen, (150, 150, 180), lpos, (planet_x, planet_y), 2)
         screen.blit(surface, (0, 0))
 
     pygame.draw.rect(screen, (100, 100, 150), clock_rect)
@@ -737,9 +645,9 @@ def draw_space():
         text_surface = title_font.render(text, True, (255, 255, 255))
         text_rect = text_surface.get_rect(center=create_text_rect.center)
         screen.blit(text_surface, text_rect)
-        for setting in setting_objs:
+        for name, setting in setting_objs.items():
             setting.update()
-            setting.draw()
+            setting.draw(screen)
     else:
         writing=False
 
@@ -757,18 +665,6 @@ while True:
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:
                 mouse_x, mouse_y = event.pos
-                for planet_name, planet in planets.items():
-                    if math.hypot(mouse_x - space_to_screen(planet['position'])[0], mouse_y - space_to_screen(planet['position'])[1]) <= calculate_planet_size(planet['radius']) + 5:
-                        launching = planet_name
-                        pause(True)
-                if camera_mode == 1 and not launching:
-                    orig_space_mouse_x, orig_space_mouse_y = screen_to_space((mouse_x, mouse_y))
-                    orig_camera_x, orig_camera_y = camera_x, camera_y
-                    moving = True
-                if following:
-                    if delete_rect.collidepoint(mouse_x, mouse_y):
-                        planets.pop(following)
-                        following = ''
                 if creating:
                     if confirm_rect.collidepoint(mouse_x, mouse_y):
                         for i, input_box in enumerate(input_boxes):
@@ -790,6 +686,19 @@ while True:
                     if not create_rect.collidepoint(mouse_x, mouse_y):
                         settings_on = False
                         pause(False)
+                else:
+                    for planet_name, planet in planets.items():
+                        if math.hypot(mouse_x - space_to_screen(planet['position'])[0], mouse_y - space_to_screen(planet['position'])[1]) <= calculate_planet_size(planet['radius']) + 5:
+                            launching = planet_name
+                            pause(True)
+                    if camera_mode == 1 and not launching:
+                        orig_space_mouse_x, orig_space_mouse_y = screen_to_space((mouse_x, mouse_y))
+                        orig_camera_x, orig_camera_y = camera_x, camera_y
+                        moving = True
+                    if following:
+                        if delete_rect.collidepoint(mouse_x, mouse_y):
+                            planets.pop(following)
+                            following = ''
             elif event.button == 3:
                 mouse_x, mouse_y = event.pos
                 for planet_name, planet in planets.items():
@@ -835,7 +744,8 @@ while True:
                     creating = True
                 elif event.key == pygame.K_d:
                     for planet_name, planet in planets.items():
-                        planet['old_positions'] = [planet['position']]
+                        planet['old_positions'] = deque(maxlen=round(fps*int(setting_objs['Trail Lifetime (s)'].value)))
+                        planet['old_positions'].append(planet['position'])
                 elif event.key == pygame.K_s:
                     settings_on = not settings_on
                     pause(settings_on)
@@ -847,10 +757,12 @@ while True:
                 if result is not None:
                     results[i] = result
         if settings_on:
-            for i, setting in enumerate(setting_objs):
+            for name, setting in setting_objs.items():
                 result=setting.handle_event(event)
-                if result is not None:
-                    settings[0]=result
+                if name=='Trail Lifetime (s)':
+                    if result is not None:
+                        for planet_name, planet in planets.items():
+                            planet['old_positions'] = deque(planet['old_positions'], maxlen=round(fps*int(setting_objs[name].value)))
     if moving:
         mouse_x, mouse_y = pygame.mouse.get_pos()
         space_mouse_x, space_mouse_y = screen_to_space((mouse_x, mouse_y))
