@@ -1,4 +1,5 @@
 import datetime
+from datetime import date
 import math
 from math import degrees, radians
 import numpy as np
@@ -142,11 +143,8 @@ clock_rect = pygame.Rect(10, 10, 300, 40)
 pos_rect = pygame.Rect(screen_size-300-10, 10, 300, 40)
 
 class InputBox:
-    def __init__(self, name, y, h, value='', input_type: type =bool, anim_time=0.3, acceptszero=False):
+    def __init__(self, name:str, y, h, value:str|int|float|bool|datetime.datetime=None, input_type:type=bool, anim_time=0.3, acceptszero=False):
         self.name = name
-        self.color_inactive = pygame.Color('lightskyblue3')
-        self.color_active   = pygame.Color('dodgerblue2')
-        self.color = self.color_inactive
         self.acceptszero = acceptszero
         self.input_type = input_type
 
@@ -169,6 +167,10 @@ class InputBox:
 
         self.txt_input = self.input_type in (int, float, str)
         if self.txt_input:
+            self.color_inactive = pygame.Color('lightskyblue3')
+            self.color_active = pygame.Color('dodgerblue2')
+            self.color = self.color_inactive
+
             self.value = str(self.value)
             left=max(w + 20, int(create_rect.width * 0.11))
             self.orig_rect = pygame.Rect(create_rect.left + left, create_rect.top + 60 + y, create_rect.width-left-20, h)
@@ -177,7 +179,6 @@ class InputBox:
             self.active = False
             pygame.scrap.init()
             pygame.scrap.set_mode(pygame.SCRAP_CLIPBOARD)
-
         elif self.input_type is bool:
             self.settinglength = 98
 
@@ -200,6 +201,29 @@ class InputBox:
                 self._frames_elapsed = 18
             else:
                 self.switch=self._frames[0]
+        elif self.input_type is datetime.datetime:
+            self.color_inactive = (100,100,100)
+            self.color_active = (100,120,150)
+            self.color = self.color_inactive
+
+            self.active = 0
+            self.year_surface = clock_font.render(str(self.value.year), True, pygame.Color('white'))
+            self.month_surface = clock_font.render(str(self.value.month), True, pygame.Color('white'))
+            self.day_surface = clock_font.render(str(self.value.day), True, pygame.Color('white'))
+            self.txt_surfaces = {'year_surface': self.year_surface, 'month_surface': self.month_surface, 'day_surface': self.day_surface}
+            self.hyphen_surface = clock_font.render('-', True, (200, 200, 200))
+            self.padding = 2
+            self.txth = self.month_surface.get_height()
+            left = max(w + 20, int(create_rect.width * 0.11))
+
+            vars = ['year', 'month', 'day']
+            self.clickable_rects = {}
+            i,tot_w=0,0
+            for surf_name, surface in self.txt_surfaces.items():
+                self.clickable_rects[surf_name] = [pygame.Rect(create_rect.left + left + self.padding*4.5*i + tot_w, create_rect.top + 60 + y + self.txth/2, surface.get_width()+self.padding*3, self.txth),vars[i]]
+                i += 1
+                tot_w += self.txt_surfaces[surf_name].get_width()
+
 
     def __repr__(self):
         return f"'{self.name}'={self.value} (type={self.input_type}, ac_0: {self.acceptszero})"
@@ -207,14 +231,21 @@ class InputBox:
         return f'{self.name}, of type: {self.input_type}, is equal to {self.value}'
 
     def _isvalid(self):
-        """Return True if `self.raw_text` can be cast to `self.input_type`."""
+        """Return True if `self.value` can be cast to `self.input_type`."""
         try:
             self.input_type(self.value)
+            print('true1', self.value)
             return True
         except Exception:
             if self.input_type in (int, float):
                 try:
-                    ne.validate(str(self.value))
+                    str(ne.evaluate(str(self.value)))
+                    return True
+                except Exception:
+                    return False
+            elif self.input_type is datetime.datetime:
+                try:
+                    date(ne.evaluate(str(self.value.year)), ne.evaluate(str(self.value.month)), ne.evaluate(str(self.value.day)))
                     return True
                 except Exception:
                     return False
@@ -225,7 +256,7 @@ class InputBox:
         # keep only printable characters (including spaces)
         return ''.join(ch for ch in txt if ch.isprintable() and not ch.isspace())
 
-    def _activate(self, activate=True):
+    def _activate(self, activate:bool|int|str=True):
         global writing
         self.active = activate
         self.color = self.color_active if self.active else self.color_inactive
@@ -277,6 +308,10 @@ class InputBox:
                 self.toggle()
                 return self.value
             return self.value
+        elif self.input_type is datetime.datetime:
+            self._activate(0)
+            for n, list in self.clickable_rects.items():
+                self._activate(n if list[0].collidepoint(pos) else self.active)
 
     def handle_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN:
@@ -285,10 +320,9 @@ class InputBox:
             if self.txt_input and self.active:
                 if event.key == pygame.K_RETURN:
                     if self._isvalid():
-                        if self._isvalid():
-                            if self.input_type in (int, float):
-                                self.value = str(ne.evaluate(str(self.value)))
-                            self.txt_surface = clock_font.render(self.value, True, pygame.Color('white'))
+                        if self.input_type in (int, float):
+                            self.value = str(ne.evaluate(str(self.value)))
+                        self.txt_surface = clock_font.render(self.value, True, pygame.Color('white'))
                         entered = self.value
                         entered = self.input_type(entered)
                         self._activate(False)
@@ -311,6 +345,67 @@ class InputBox:
                     except Exception:
                         pass
                     return None
+            if self.input_type is datetime.datetime:
+                for n, list in self.clickable_rects.items():
+                    if self.active == n:
+                        if event.key == pygame.K_RETURN:
+                            if self._isvalid():
+                                attr_name = list[1]
+                                current_val = getattr(self.value, attr_name)
+                                expr = str(current_val)
+                                new_val = int(ne.evaluate(expr))
+                                self.value = self.value.replace(**{attr_name: new_val})
+
+                                txt = str(getattr(self.value, attr_name))
+                                self.txt_surfaces[n] = clock_font.render(txt,
+                                                                         True,
+                                                                         pygame.Color('white'))
+                                entered = self.input_type(txt)
+                                self._activate(False)
+                                return entered
+                            return None
+
+                        elif event.key == pygame.K_BACKSPACE:
+                            attr_name = list[1]
+                            current_val = getattr(self.value, attr_name)
+                            truncated = str(current_val)[:-1]
+                            if truncated:
+                                try:
+                                    new_val = int(truncated)
+                                except ValueError:
+                                    new_val = current_val
+                            else:
+                                defaults = {'year': datetime.datetime.now().year,
+                                            'month': 1,
+                                            'day': 1,
+                                            'hour': 0,
+                                            'minute': 0,
+                                            'second': 0}
+                                new_val = defaults.get(attr_name, current_val)
+                            self.value = self.value.replace(**{attr_name: new_val})
+                            txt = str(new_val)
+                            self.txt_surfaces[n] = clock_font.render(txt,
+                                                                     True,
+                                                                     pygame.Color('white'))
+                        else:
+                            attr_name = list[1]
+                            current_val = getattr(self.value, attr_name)
+                            new_text = str(current_val) + self._clean_text(event.unicode)
+                            try:
+                                new_val = int(new_text)
+                            except ValueError:
+                                new_val = current_val
+                            try:
+                                self.value = self.value.replace(**{attr_name: new_val})
+                            except ValueError:
+                                pass
+                            txt = str(new_val)
+                            self.txt_surfaces[n] = clock_font.render(txt,
+                                                                     True,
+                                                                     pygame.Color('white'))
+
+
+                        self.txt_surface = clock_font.render(list[1], True, pygame.Color('white'))
 
     def update(self):
         if self.txt_input:
@@ -341,6 +436,18 @@ class InputBox:
         elif self.input_type is bool:
             switch_rect = self.switch.get_rect(topleft=self.srect.topleft)
             screen.blit(self.switch, switch_rect)
+        elif self.input_type is datetime.datetime:
+            for n, list in self.clickable_rects.items():
+                pygame.draw.rect(surface, self.color_active if self.active==n else self.color_inactive, list[0])
+                text_rect = self.txt_surfaces[n].get_rect()
+                text_rect.center = list[0].center
+                screen.blit(self.txt_surfaces[n], text_rect)
+
+                _, last_value = next(reversed(self.clickable_rects.items()))
+
+                if list[0]!=last_value[0]:
+                    screen.blit(self.hyphen_surface, pygame.Rect(list[0].left+list[0].width+self.padding, list[0].top,
+                                self.hyphen_surface.get_width(), self.txth))
 
 inputs = {'Name': {'type':str, 'h':40, 'value':'Planet_Name'},
           'Mass': {'type':float, 'h':40, 'value':'5.972e24'},
@@ -363,6 +470,7 @@ for name, vars in inputs.items():
 settings = {'Transparent Trails': {'type':bool, 'h':42, 'value':True},
             'Trail Lifetime (s)': {'type':float, 'h':40, 'value':20,'acceptszero':True},
             'Time Scale (sim s/real s)': {'type':float, 'h':40, 'value':dt_scale*60,'acceptszero':False},
+            'Date': {'type':datetime.datetime, 'h':40, 'value':t,'acceptszero':False},
             }
 
 setting_objs = {}
@@ -374,8 +482,6 @@ for name, specs in settings.items():
         specs['acceptszero'] = False
     setting_objs[name] = (InputBox(name, y, specs['h'], specs['value'], input_type=specs['type'], acceptszero=specs['acceptszero']))
     y += specs['h'] + 20
-
-gravitational_constant = 6.67430e-11  # m³·kg⁻¹·s⁻²
 
 def calculate_initial_velocity(satellite, central_body=None):
     cmass = central_body['mass']
@@ -409,6 +515,7 @@ def create_planet(name, mass, radius, color, x, y, has_rings=False):
         'old_positions': deque(maxlen=round(fps*int(setting_objs['Trail Lifetime (s)'].value))),
         'velocity': np.array([0, 0]),
         'has_rings': has_rings,
+        'is_sun': False,
     }
     creating=False
 
@@ -744,6 +851,8 @@ while True:
                         pause(False)
                 else:
                     for planet_name, planet in planets.items():
+                        if planet['is_sun']:
+                            continue
                         if math.hypot(mouse_x - space_to_screen(planet['position'])[0], mouse_y - space_to_screen(planet['position'])[1]) <= calculate_planet_size(planet['radius']) + 5:
                             launching = planet_name
                             pause(True)
