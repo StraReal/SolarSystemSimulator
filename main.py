@@ -7,10 +7,7 @@ import re
 from collections import deque
 from position_sf import pos
 import time
-
-central_mass = 1.989e30#kg
-
-central_radius = 695508#km
+import numexpr as ne
 
 max_size = 1
 zoom_factor = 1
@@ -32,6 +29,14 @@ dt = dt_scale
 frame_count = 0
 
 planets = {
+    'Sun': {
+        'mass': 1.989e30,
+        'radius': 695508,
+        'color': (200, 100, 10),
+        'is_sun': True,
+        'position': (0,0),
+        'velocity': (0,0)
+    },
     'Earth': {
         'mass': 5.972e24,
         'radius': 6371,
@@ -207,6 +212,12 @@ class InputBox:
             self.input_type(self.value)
             return True
         except Exception:
+            if self.input_type in (int, float):
+                try:
+                    ne.validate(str(self.value))
+                    return True
+                except Exception:
+                    return False
             return False
 
     def _clean_text(self, txt: str) -> str:
@@ -252,8 +263,11 @@ class InputBox:
         if self.txt_input:
             self._activate(self.rect.collidepoint(pos))
             if not self.active:
-                entered = self.value
                 if self._isvalid():
+                    if self.input_type in (int, float):
+                        self.value = str(ne.evaluate(str(self.value)))
+                    self.txt_surface = clock_font.render(self.value, True, pygame.Color('white'))
+                    entered = self.value
                     entered = self.input_type(entered)
                     self._activate(False)
                     return entered
@@ -270,8 +284,12 @@ class InputBox:
         if event.type == pygame.KEYDOWN:
             if self.txt_input and self.active:
                 if event.key == pygame.K_RETURN:
-                    entered = self.value
                     if self._isvalid():
+                        if self._isvalid():
+                            if self.input_type in (int, float):
+                                self.value = str(ne.evaluate(str(self.value)))
+                            self.txt_surface = clock_font.render(self.value, True, pygame.Color('white'))
+                        entered = self.value
                         entered = self.input_type(entered)
                         self._activate(False)
                         return entered
@@ -343,7 +361,10 @@ for name, vars in inputs.items():
     y+=vars['h'] + 20
 
 settings = {'Transparent Trails': {'type':bool, 'h':42, 'value':True},
-            'Trail Lifetime (s)': {'type':float, 'h':40, 'value':20,'acceptszero':True},}
+            'Trail Lifetime (s)': {'type':float, 'h':40, 'value':20,'acceptszero':True},
+            'Time Scale (sim s/real s)': {'type':float, 'h':40, 'value':dt_scale*60,'acceptszero':False},
+            }
+
 setting_objs = {}
 y=0
 for name, specs in settings.items():
@@ -357,12 +378,8 @@ for name, specs in settings.items():
 gravitational_constant = 6.67430e-11  # m³·kg⁻¹·s⁻²
 
 def calculate_initial_velocity(satellite, central_body=None):
-    if central_body is None:
-        cmass = central_mass
-        cpos  = (0.0, 0.0)
-    else:
-        cmass = central_body['mass']
-        cpos  = central_body['position']
+    cmass = central_body['mass']
+    cpos  = central_body['position']
 
     spos  = satellite['position']
 
@@ -427,6 +444,13 @@ def calculate_distance(x1, y1, x2, y2):
 
 #central mass position (sun) is always 0,0.
 for planet_name, planet in planets.items():
+    if 'is_sun' not in planet:
+        planet['is_sun'] = False
+    if 'has_rings' not in planet:
+        planet['has_rings'] = False
+    planet['old_positions'] = deque(maxlen=round(fps*int(setting_objs['Trail Lifetime (s)'].value)))
+    if planet['is_sun']:
+        continue
     pos.init()
     try:
         x, y, _ = pos.get_position(planet_name.lower(), date=t)
@@ -437,10 +461,7 @@ for planet_name, planet in planets.items():
             planet['position'] = np.array([x, y])
         except KeyError:
             print(f'{planet_name} is not included in database.')
-    planet['old_positions'] = deque(maxlen=round(fps*int(setting_objs['Trail Lifetime (s)'].value)))
-    planet['velocity'] = calculate_initial_velocity(planet)
-    if 'has_rings' not in planet:
-        planet['has_rings'] = False
+    planet['velocity'] = calculate_initial_velocity(planet, planets['Sun'])
 
 def maybe_append(trail, new_pos):
     if not trail:
@@ -458,8 +479,9 @@ def compute_frame(count_frame=False):
         l2000_max_size = max_size
     decrease_factor = 0.999 if l2000_max_size >= max_size else 1
     for planet_name, planet in planets.items():
-        attraction = calculate_attraction(central_mass, planet['mass'], (calculate_distance(planet['position'][0], planet['position'][1], 0, 0))*1000)
-        planet['acceleration'] = calculate_acceleration(attraction, planet['mass'], planet['position'])
+        if planet['is_sun']:
+            continue
+        planet['acceleration'] = [0,0]
         for other_name, other in planets.items():
             if planet_name != other_name:
                 r_vec = np.array(other['position']) - np.array(planet['position'])
@@ -530,7 +552,6 @@ def draw_space():
         t_camera_y = camera_y
 
     kmpx_ratio = max_size / screen_size / zoom_factor
-    sun_size = calculate_planet_size(central_radius, is_sun=True)
     visible_area = screen_size * kmpx_ratio
     va_min_x = t_camera_x - visible_area/2
     va_min_y = (-t_camera_y) - visible_area/2
@@ -565,10 +586,8 @@ def draw_space():
         color = (r, g, b)
         pygame.draw.line(screen, color, (mouse_x, mouse_y), (planet_x, planet_y), 5)
 
-    pygame.draw.circle(screen, (200, 100, 10), spacezero, sun_size)
-
     for planet_name, planet in planets.items():
-        planet_size = calculate_planet_size(planet['radius'])
+        planet_size = calculate_planet_size(planet['radius'], planet['is_sun'])
         if following == planet_name:
             planet_x, planet_y = 500, 500
         else:
@@ -577,33 +596,34 @@ def draw_space():
         if planet['has_rings']:
             pygame.draw.circle(screen, (planet['color']), (planet_x, planet_y), int(planet_size*1.3), int(planet_size * 0.15))
 
-        end_pos = (int(planet_x + planet['velocity'][0] * fps * 180 / kmpx_ratio),
-                   int(planet_y + planet['velocity'][1] * fps * 180 / -kmpx_ratio))
-        if (0 <= end_pos[0] <= screen_size and 0 <= end_pos[1] <= screen_size) or (
-                0 <= planet_x <= screen_size and 0 <= planet_y <= screen_size):
-            pygame.draw.line(screen, (200, 200, 200), (planet_x, planet_y), end_pos, 5)
+        if not planet['is_sun']:
+            end_pos = (int(planet_x + planet['velocity'][0] * fps * 180 / kmpx_ratio),
+                       int(planet_y + planet['velocity'][1] * fps * 180 / -kmpx_ratio))
+            if (0 <= end_pos[0] <= screen_size and 0 <= end_pos[1] <= screen_size) or (
+                    0 <= planet_x <= screen_size and 0 <= planet_y <= screen_size):
+                pygame.draw.line(screen, (200, 200, 200), (planet_x, planet_y), end_pos, 5)
 
-        end_pos = (int(planet_x + planet['acceleration'][0] * fps * 1440 * 2000 / kmpx_ratio),
-                   int(planet_y + planet['acceleration'][1] * fps * 1440 * 2000 / -kmpx_ratio))
-        if (0 <= end_pos[0] <= screen_size and 0 <= end_pos[1] <= screen_size) or (0 <= planet_x <= screen_size and 0 <= planet_y <= screen_size):
-            pygame.draw.line(screen, (200, 0, 0), (planet_x, planet_y), end_pos, 5)
-        if planet_name == 'Earth':
-            earth_x, earth_y, earth_size = planet_x, planet_y, planet_size
+            end_pos = (int(planet_x + planet['acceleration'][0] * fps * 1440 * 2000 / kmpx_ratio),
+                       int(planet_y + planet['acceleration'][1] * fps * 1440 * 2000 / -kmpx_ratio))
+            if (0 <= end_pos[0] <= screen_size and 0 <= end_pos[1] <= screen_size) or (0 <= planet_x <= screen_size and 0 <= planet_y <= screen_size):
+                pygame.draw.line(screen, (200, 0, 0), (planet_x, planet_y), end_pos, 5)
+            if planet_name == 'Earth':
+                earth_x, earth_y, earth_size = planet_x, planet_y, planet_size
 
-        if setting_objs['Transparent Trails'].value:
-            for i in range(len(planet['old_positions']) - 1):
-                pos = space_to_screen(planet['old_positions'][i], (t_camera_x, t_camera_y))
-                pos2 = space_to_screen(planet['old_positions'][i + 1], (t_camera_x, t_camera_y))
-                alpha = i / len(planet['old_positions']) * 255
-                pygame.draw.line(surface, (150, 150, 180, alpha), pos, pos2, 2)
-        else:
-            if len(planet['old_positions']) > 1:
-                screen_points = [space_to_screen(p, (t_camera_x, t_camera_y)) for p in planet['old_positions']]
-                pygame.draw.lines(screen, (150, 150, 180), False, screen_points, 2)
-        if len(planet['old_positions']) > 0:
-            lpos = space_to_screen(planet['old_positions'][-1], (t_camera_x, t_camera_y))
-            pygame.draw.line(screen, (150, 150, 180), lpos, (planet_x, planet_y), 2)
-        screen.blit(surface, (0, 0))
+            if setting_objs['Transparent Trails'].value:
+                for i in range(len(planet['old_positions']) - 1):
+                    pos = space_to_screen(planet['old_positions'][i], (t_camera_x, t_camera_y))
+                    pos2 = space_to_screen(planet['old_positions'][i + 1], (t_camera_x, t_camera_y))
+                    alpha = i / len(planet['old_positions']) * 255
+                    pygame.draw.line(surface, (150, 150, 180, alpha), pos, pos2, 2)
+            else:
+                if len(planet['old_positions']) > 1:
+                    screen_points = [space_to_screen(p, (t_camera_x, t_camera_y)) for p in planet['old_positions']]
+                    pygame.draw.lines(screen, (150, 150, 180), False, screen_points, 2)
+            if len(planet['old_positions']) > 0:
+                lpos = space_to_screen(planet['old_positions'][-1], (t_camera_x, t_camera_y))
+                pygame.draw.line(screen, (150, 150, 180), lpos, (planet_x, planet_y), 2)
+            screen.blit(surface, (0, 0))
 
     pygame.draw.rect(screen, (100, 100, 150), clock_rect)
 
@@ -796,10 +816,13 @@ while True:
         if settings_on:
             for name, setting in setting_objs.items():
                 result=setting.handle_event(event)
-                if name=='Trail Lifetime (s)':
-                    if result is not None:
-                        for planet_name, planet in planets.items():
-                            planet['old_positions'] = deque(planet['old_positions'], maxlen=round(fps*int(setting_objs[name].value)))
+                if result is not None and not ((not setting.acceptszero) and (type(result) ==int) and result == 0):
+                    if name=='Trail Lifetime (s)':
+                            for planet_name, planet in planets.items():
+                                planet['old_positions'] = deque(planet['old_positions'], maxlen=round(fps*float(setting_objs[name].value)))
+                    elif name=='Time Scale (sim s/real s)':
+                        dt_scale = float(setting_objs['Time Scale (sim s/real s)'].value) / 60
+                        dt = dt_scale if not real_time else dt
     if moving:
         mouse_x, mouse_y = pygame.mouse.get_pos()
         space_mouse_x, space_mouse_y = screen_to_space((mouse_x, mouse_y))
@@ -814,4 +837,5 @@ while True:
     pygame.display.flip()
     clock.tick(fps)
     frame_count += 1
-    t += datetime.timedelta(microseconds=round(dt*1000000))
+    if not paused:
+        t += datetime.timedelta(microseconds=round(dt*1000000))
