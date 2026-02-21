@@ -8,6 +8,7 @@ import pygame
 import re
 from collections import deque
 from position_sf import pos
+import spacegenerator as sg
 import time
 import numexpr as ne
 
@@ -501,6 +502,7 @@ settings = {'World Border': {'type':bool, 'h':42, 'value':True},
             'Time Scale (sim s/real s)': {'type':float, 'h':40, 'value':dt_scale*60,'acceptszero':False},
             'Date': {'type':datetime.datetime, 'h':40, 'value':t,'acceptszero':False},
             'Full Solar System': {'type':bool, 'h':42, 'value':False},
+            'Background Stars': {'type':bool, 'h':42, 'value':True},
             }
 
 setting_objs = {}
@@ -667,6 +669,9 @@ def compute_frame(count_frame=False):
 
 compute_frame()
 
+background_size = 2048
+space_surf = sg.generate_starfield(background_size, background_size)
+
 print('(Relative to the sun) x:', planets['Earth']['position'][0], ' y:', planets['Earth']['position'][1])
 print('Acceleration:', planets['Earth']['acceleration'])
 print('Velocity:', planets['Earth']['velocity'])
@@ -720,7 +725,16 @@ def draw_space():
     visible_area = screen_size * kmpx_ratio
     va_min_x = t_camera_x - visible_area/2
     va_min_y = (-t_camera_y) - visible_area/2
-    screen.fill((0, 0, 20))
+    if setting_objs['Background Stars'].value:
+        dest_x, dest_y = ((-va_min_x/kmpx_ratio)/4) % background_size, (-va_min_y/kmpx_ratio)/4 % background_size
+
+
+        screen.blit(space_surf, (dest_x, dest_y))
+        screen.blit(space_surf, (dest_x-background_size, dest_y))
+        screen.blit(space_surf, (dest_x, dest_y-background_size))
+        screen.blit(space_surf, (dest_x-background_size, dest_y-background_size))
+    else:
+        screen.fill((0,0,10))
 
     lines = (visible_area/(10**math.floor(math.log10(visible_area/2))))
     line_space = screen_size/lines
