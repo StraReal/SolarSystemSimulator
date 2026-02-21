@@ -1,3 +1,4 @@
+import copy
 import datetime
 from datetime import date
 import math
@@ -91,6 +92,7 @@ real_time = False
 creating = False
 writing = False
 settings_on = False
+editing = ''
 
 pygame.init()
 pygame.key.set_repeat(300, 30)
@@ -476,17 +478,21 @@ inputs = {'Name': {'type':str, 'h':40, 'value':'Planet_Name'},
           'Has Rings': {'type':bool, 'h':42, 'value':False},
           'Immovable': {'type':bool, 'h':42, 'value':False},}
 
-input_boxes=[]
-results=[]
-y=0
-for name, vars in inputs.items():
-    results.append(None)
-    if not 'h' in vars:
-        vars['h'] = 40
-    if not 'acceptszero' in vars:
-        vars['acceptszero'] = False
-    input_boxes.append(InputBox(name, y, vars['h'], vars['value'], vars['type'], acceptszero=vars['acceptszero']))
-    y+=vars['h'] + 20
+def init_inputboxes():
+    global input_boxes, results
+    input_boxes=[]
+    results=[]
+    y=0
+    for name, vars in inputs.items():
+        results.append(None)
+        if not 'h' in vars:
+            vars['h'] = 40
+        if not 'acceptszero' in vars:
+            vars['acceptszero'] = False
+        input_boxes.append(InputBox(name, y, vars['h'], vars['value'], vars['type'], acceptszero=vars['acceptszero']))
+        y+=vars['h'] + 20
+
+init_inputboxes()
 
 settings = {'World Border': {'type':bool, 'h':42, 'value':True},
             'World Border Size': {'type':int, 'h':40, 'value':40000000000},
@@ -577,7 +583,7 @@ def calculate_distance(x1, y1, x2, y2):
 def init_planets():
     global planets
 
-    planets = f_planets.copy()
+    planets = copy.deepcopy(f_planets)
     if not FULL_SYSTEM:
         del planets['Mercury'], planets['Neptune']
     if SMALL_SYSTEM:
@@ -757,7 +763,7 @@ def draw_space():
             planet_x, planet_y = space_to_screen(planet['position'], (t_camera_x, t_camera_y))
         pygame.draw.circle(screen, (planet['color']), (planet_x, planet_y), planet_size)
         if planet['has_rings']:
-            pygame.draw.circle(screen, (planet['color']), (planet_x, planet_y), int(planet_size*1.3), int(planet_size * 0.15))
+            pygame.draw.circle(surface, (planet['color'][0], planet['color'][1],planet['color'][2], 100), (planet_x, planet_y), int(planet_size*1.3), int(planet_size * 0.15))
 
         if not planet['is_sun']:
             end_pos = (int(planet_x + planet['velocity'][0] * fps * 180 / kmpx_ratio),
@@ -849,9 +855,9 @@ def draw_space():
         editimage_rect = editimage.get_rect(topleft=edit_rect.topleft)
         screen.blit(editimage, editimage_rect)
 
-    if creating:
+    if creating or editing:
         pygame.draw.rect(screen, (30, 30, 50), create_rect)
-        text = "Create Planet"
+        text = "Create Planet" if creating else "Edit Planet"
         text_surface = title_font.render(text, True, (255, 255, 255))
         text_rect = text_surface.get_rect(center=create_text_rect.center)
         screen.blit(text_surface, text_rect)
@@ -869,6 +875,7 @@ def draw_space():
             pygame.draw.rect(screen, sel_color, color_rect)
         else:
             pygame.draw.rect(screen, (0,0,0), color_rect)
+
     elif settings_on:
         pygame.draw.rect(screen, (50, 50, 50), create_rect)
         text = "Settings"
@@ -912,6 +919,28 @@ while True:
                         if all(not box.active for box in input_boxes):
                             creating = False
                             pause(False)
+                elif editing:
+                    if confirm_rect.collidepoint(mouse_x, mouse_y):
+                        for i, input_box in enumerate(input_boxes):
+                            result = input_box.handle_event(event)
+                            if not result[1]:
+                                result=None
+                            if result is not None:
+                                results[i] = result[0]
+                        if all(r is not None for r in results):
+                            planet_color = (results[3], results[4], results[5])
+                            planets[editing]['mass']=results[1]
+                            planets[editing]['radius'] = results[2]
+                            planets[editing]['color'] = planet_color
+                            planets[editing]['has_rings'] = results[6]
+                            planets[editing]['is_sun'] = results[7]
+                            editing = ''
+                            pause(False)
+                            compute_frame(True)
+                    elif not create_rect.collidepoint(mouse_x, mouse_y):
+                        if all(not box.active for box in input_boxes):
+                            editing = ''
+                            pause(False)
                 elif settings_on:
                     if not create_rect.collidepoint(mouse_x, mouse_y):
                         settings_on = False
@@ -931,6 +960,18 @@ while True:
                         if delete_rect.collidepoint(mouse_x, mouse_y):
                             planets.pop(following)
                             following = ''
+                        elif edit_rect.collidepoint(mouse_x, mouse_y):
+                            inputs = {'Name': {'type': str, 'h': 40, 'value': following},
+                                      'Mass': {'type': float, 'h': 40, 'value': planets[following]['mass']},
+                                      'Radius': {'type': float, 'h': 40, 'value': planets[following]['radius']},
+                                      'R': {"type": int, 'h': 40, 'value': planets[following]['color'][0], 'acceptszero': True, },
+                                      'G': {'type': int, 'h': 40, 'value': planets[following]['color'][1], 'acceptszero': True, },
+                                      'B': {'type': int, 'h': 40, 'value': planets[following]['color'][2], 'acceptszero': True, },
+                                      'Has Rings': {'type': bool, 'h': 42, 'value': planets[following]['has_rings']},
+                                      'Immovable': {'type': bool, 'h': 42, 'value': planets[following]['is_sun']}, }
+                            init_inputboxes()
+                            editing = following
+                            pause(True)
             elif event.button == 2:
                 zoom_factor = 1
             elif event.button == 3:
@@ -972,9 +1013,10 @@ while True:
                 elif event.key == pygame.K_p:
                     real_sizes = not real_sizes
                 elif event.key == pygame.K_q:
-                    creating_x, creating_y = screen_to_space(pygame.mouse.get_pos())
-                    creating = not creating
-                    pause(creating)
+                    if not editing:
+                        creating_x, creating_y = screen_to_space(pygame.mouse.get_pos())
+                        creating = not creating
+                        pause(creating)
                 elif event.key == pygame.K_d:
                     for planet_name, planet in planets.items():
                         planet['old_positions'] = deque(maxlen=round(fps*float(setting_objs['Trail Lifetime (s)'].value)))
@@ -982,7 +1024,7 @@ while True:
                 elif event.key == pygame.K_s:
                     settings_on = not settings_on
                     pause(settings_on)
-        if creating:
+        if creating or editing:
             for i, input_box in enumerate(input_boxes):
                 result=input_box.handle_event(event)
                 if not result[1]:
