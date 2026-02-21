@@ -29,7 +29,7 @@ dt_scale = 60*24*6 #seconds per frame (with 60fps, having this at 3600 would mea
 dt = dt_scale
 frame_count = 0
 
-planets = {
+f_planets = {
     'Sun': {
         'mass': 1.989e30,
         'radius': 695508,
@@ -77,12 +77,10 @@ planets = {
 
 } #mass (kg), radius (km),
 
-t = datetime.datetime.now()
+FULL_SYSTEM = False  # Remove Mercury (spins too fast) and Neptune (too far, dezooms too much)
+SMALL_SYSTEM = True  # If True removes Uranus too, making all the planets appear "decently-sized"
 
-FULL_SYSTEM = False # Remove Mercury (spins too fast) and Neptune (too far, dezooms too much)
-SMALL_SYSTEM = False # If True removes Uranus too, making all the planets appear "decently-sized"
-if not FULL_SYSTEM:
-    del planets['Mercury'], planets['Neptune'], planets['Uranus']
+t = datetime.datetime.now()
 
 following = ''
 launching = ''
@@ -217,10 +215,11 @@ class InputBox:
             left = max(w + 20, int(create_rect.width * 0.11))
 
             vars = ['year', 'month', 'day']
+            svals = [self.value.year, self.value.month, self.value.day]
             self.clickable_rects = {}
             i,tot_w=0,0
             for surf_name, surface in self.txt_surfaces.items():
-                self.clickable_rects[surf_name] = [pygame.Rect(create_rect.left + left + self.padding*4.5*i + tot_w, create_rect.top + 60 + y + self.txth/2, surface.get_width()+self.padding*3, self.txth),vars[i]]
+                self.clickable_rects[surf_name] = [pygame.Rect(create_rect.left + left + self.padding*4.5*i + tot_w, create_rect.top + 60 + y + self.txth/2, surface.get_width()+self.padding*3, self.txth),vars[i], svals[i]]
                 i += 1
                 tot_w += self.txt_surfaces[surf_name].get_width()
 
@@ -230,25 +229,30 @@ class InputBox:
     def __str__(self):
         return f'{self.name}, of type: {self.input_type}, is equal to {self.value}'
 
-    def _isvalid(self):
+    def _isvalid(self, value=None):
         """Return True if `self.value` can be cast to `self.input_type`."""
+        if value is None:
+            value=self.value
         try:
             self.input_type(self.value)
-            print('true1', self.value)
             return True
         except Exception:
             if self.input_type in (int, float):
                 try:
-                    str(ne.evaluate(str(self.value)))
+                    str(ne.evaluate(str(value)))
                     return True
                 except Exception:
                     return False
             elif self.input_type is datetime.datetime:
                 try:
-                    date(ne.evaluate(str(self.value.year)), ne.evaluate(str(self.value.month)), ne.evaluate(str(self.value.day)))
+                    date(ne.evaluate(str(value.year)), ne.evaluate(str(value.month)), ne.evaluate(str(value.day)))
                     return True
                 except Exception:
-                    return False
+                    try:
+                        date(ne.evaluate(str(value[0])), ne.evaluate(str(value[1])), ne.evaluate(str(value[2])))
+                        return True
+                    except Exception:
+                        return False
             return False
 
     def _clean_text(self, txt: str) -> str:
@@ -299,7 +303,10 @@ class InputBox:
                         self.value = str(ne.evaluate(str(self.value)))
                     self.txt_surface = clock_font.render(self.value, True, pygame.Color('white'))
                     entered = self.value
-                    entered = self.input_type(entered)
+                    if self.input_type is int:
+                        entered = self.input_type(float(entered))
+                    else:
+                        entered = self.input_type(entered)
                     self._activate(False)
                     return entered
                 return None
@@ -307,11 +314,34 @@ class InputBox:
             if self.srect.collidepoint(pos):
                 self.toggle()
                 return self.value
-            return self.value
+            return None
         elif self.input_type is datetime.datetime:
+            oldactive = self.active
             self._activate(0)
             for n, list in self.clickable_rects.items():
                 self._activate(n if list[0].collidepoint(pos) else self.active)
+                wasactive=(oldactive==n) and self.active!=n
+                if wasactive:
+                    print(wasactive)
+                    ndate=[v[2] for v in self.clickable_rects.values()]
+                    if self._isvalid(value=ndate):
+                        attr_name = list[1]
+                        current_val = list[2]
+                        expr = str(current_val)
+                        new_val = int(ne.evaluate(expr))
+                        self.value = self.value.replace(**{attr_name: new_val})
+
+                        txt = str(getattr(self.value, attr_name))
+                        self.txt_surfaces[n] = clock_font.render(txt,
+                                                                 True,
+                                                                 pygame.Color('white'))
+                        entered = datetime.datetime(year=self.value.year, month=self.value.month,
+                                                    day=self.value.day, hour=0, minute=0, second=0)
+                        self._activate(False)
+                        print(entered)
+                        return entered
+                    return None
+            return None
 
     def handle_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN:
@@ -345,65 +375,46 @@ class InputBox:
                     except Exception:
                         pass
                     return None
-            if self.input_type is datetime.datetime:
+            elif self.input_type is datetime.datetime:
                 for n, list in self.clickable_rects.items():
                     if self.active == n:
                         if event.key == pygame.K_RETURN:
-                            if self._isvalid():
+                            self._activate(0)
+                            ndate = [v[2] for v in self.clickable_rects.values()]
+                            print('valid', ndate)
+                            if self._isvalid(value=ndate):
                                 attr_name = list[1]
-                                current_val = getattr(self.value, attr_name)
+                                current_val = list[2]
                                 expr = str(current_val)
                                 new_val = int(ne.evaluate(expr))
                                 self.value = self.value.replace(**{attr_name: new_val})
-
                                 txt = str(getattr(self.value, attr_name))
                                 self.txt_surfaces[n] = clock_font.render(txt,
                                                                          True,
                                                                          pygame.Color('white'))
-                                entered = self.input_type(txt)
-                                self._activate(False)
+                                entered = datetime.datetime(year=self.value.year, month=self.value.month,
+                                                           day=self.value.day, hour=0, minute=0, second=0)
                                 return entered
                             return None
-
                         elif event.key == pygame.K_BACKSPACE:
-                            attr_name = list[1]
-                            current_val = getattr(self.value, attr_name)
-                            truncated = str(current_val)[:-1]
-                            if truncated:
-                                try:
-                                    new_val = int(truncated)
-                                except ValueError:
-                                    new_val = current_val
-                            else:
-                                defaults = {'year': datetime.datetime.now().year,
-                                            'month': 1,
-                                            'day': 1,
-                                            'hour': 0,
-                                            'minute': 0,
-                                            'second': 0}
-                                new_val = defaults.get(attr_name, current_val)
-                            self.value = self.value.replace(**{attr_name: new_val})
-                            txt = str(new_val)
+                            current_val = list[2]
+                            txt = str(str(current_val)[:-1])
                             self.txt_surfaces[n] = clock_font.render(txt,
                                                                      True,
                                                                      pygame.Color('white'))
+                            list[2]=txt
                         else:
-                            attr_name = list[1]
-                            current_val = getattr(self.value, attr_name)
+                            current_val = list[2]
                             new_text = str(current_val) + self._clean_text(event.unicode)
                             try:
                                 new_val = int(new_text)
                             except ValueError:
                                 new_val = current_val
-                            try:
-                                self.value = self.value.replace(**{attr_name: new_val})
-                            except ValueError:
-                                pass
                             txt = str(new_val)
                             self.txt_surfaces[n] = clock_font.render(txt,
                                                                      True,
                                                                      pygame.Color('white'))
-
+                            list[2]=txt
 
                         self.txt_surface = clock_font.render(list[1], True, pygame.Color('white'))
 
@@ -467,10 +478,13 @@ for name, vars in inputs.items():
     input_boxes.append(InputBox(name, y, vars['h'], vars['value'], vars['type'], acceptszero=vars['acceptszero']))
     y+=vars['h'] + 20
 
-settings = {'Transparent Trails': {'type':bool, 'h':42, 'value':True},
+settings = {'World Border': {'type':bool, 'h':42, 'value':True},
+            'World Border Size': {'type':int, 'h':40, 'value':40000000000},
+            'Transparent Trails': {'type':bool, 'h':42, 'value':True},
             'Trail Lifetime (s)': {'type':float, 'h':40, 'value':20,'acceptszero':True},
             'Time Scale (sim s/real s)': {'type':float, 'h':40, 'value':dt_scale*60,'acceptszero':False},
             'Date': {'type':datetime.datetime, 'h':40, 'value':t,'acceptszero':False},
+            'Full Solar System': {'type':bool, 'h':42, 'value':False},
             }
 
 setting_objs = {}
@@ -483,7 +497,7 @@ for name, specs in settings.items():
     setting_objs[name] = (InputBox(name, y, specs['h'], specs['value'], input_type=specs['type'], acceptszero=specs['acceptszero']))
     y += specs['h'] + 20
 
-def calculate_initial_velocity(satellite, central_body=None):
+def calculate_initial_velocity(satellite, central_body=None, clockwise=False):
     cmass = central_body['mass']
     cpos  = central_body['position']
 
@@ -497,8 +511,9 @@ def calculate_initial_velocity(satellite, central_body=None):
         raise ValueError("Satellite and central body occupy the same point")
 
     speed = math.sqrt(gravitational_constant * cmass / r)
-    tx = -dy / r
-    ty =  dx / r
+    i=1-clockwise*2
+    tx = i * dy / r
+    ty = -i * dx / r
 
     vx = speed * tx / 1000
     vy = speed * ty / 1000
@@ -549,26 +564,37 @@ def calculate_angle(v):
 def calculate_distance(x1, y1, x2, y2):
     return np.linalg.norm(np.array([x2 - x1, y2 - y1]))
 
-#central mass position (sun) is always 0,0.
-for planet_name, planet in planets.items():
-    if 'is_sun' not in planet:
-        planet['is_sun'] = False
-    if 'has_rings' not in planet:
-        planet['has_rings'] = False
-    planet['old_positions'] = deque(maxlen=round(fps*int(setting_objs['Trail Lifetime (s)'].value)))
-    if planet['is_sun']:
-        continue
-    pos.init()
-    try:
-        x, y, _ = pos.get_position(planet_name.lower(), date=t)
-        planet['position'] = np.array([x, y])
-    except KeyError:
+def init_planets():
+    global planets
+
+    planets = f_planets.copy()
+    if not FULL_SYSTEM:
+        del planets['Mercury'], planets['Neptune']
+    if SMALL_SYSTEM:
+        del planets['Uranus']
+
+    #central mass position (sun) is always 0,0.
+    for planet_name, planet in planets.items():
+        if 'is_sun' not in planet:
+            planet['is_sun'] = False
+        if 'has_rings' not in planet:
+            planet['has_rings'] = False
+        planet['old_positions'] = deque(maxlen=round(fps*float(setting_objs['Trail Lifetime (s)'].value)))
+        if planet['is_sun']:
+            continue
+        pos.init()
         try:
-            x, y, _ = pos.get_position(f'{planet_name.lower()} barycenter', date=t)
+            x, y, _ = pos.get_position(planet_name.lower(), date=t)
             planet['position'] = np.array([x, y])
         except KeyError:
-            print(f'{planet_name} is not included in database.')
-    planet['velocity'] = calculate_initial_velocity(planet, planets['Sun'])
+            try:
+                x, y, _ = pos.get_position(f'{planet_name.lower()} barycenter', date=t)
+                planet['position'] = np.array([x, y])
+            except KeyError:
+                print(f'{planet_name} is not included in database.')
+        planet['velocity'] = calculate_initial_velocity(planet, planets['Sun'])
+
+init_planets()
 
 def maybe_append(trail, new_pos):
     if not trail:
@@ -581,10 +607,13 @@ def maybe_append(trail, new_pos):
         trail.append(new_pos)
 
 def compute_frame(count_frame=False):
-    global velocities, angles, max_size, l2000_max_size, positions, attractions, accelerations, frame_count, camera_x, camera_y, earth_position
+    global velocities, angles, max_size, l2000_max_size, positions, attractions, accelerations, frame_count, camera_x, camera_y, earth_position, following
     if frame_count % 2000 == 0 or l2000_max_size > max_size:
         l2000_max_size = max_size
     decrease_factor = 0.999 if l2000_max_size >= max_size else 1
+    to_del=[]
+    is_wb = setting_objs['World Border'].value
+    wb = settings['World Border Size']['value']
     for planet_name, planet in planets.items():
         if planet['is_sun']:
             continue
@@ -599,13 +628,21 @@ def compute_frame(count_frame=False):
         planet['velocity'] = calculate_velocity(planet['velocity'], planet['acceleration'], dt)
         planet['angle'] = calculate_angle(planet['velocity'])
         planet['position'] = calculate_position(planet['position'], planet['velocity'], dt)
-        if planet_name == 'Earth':
-            earth_position = planet['position']
+        if is_wb:
+            if abs(planet['position'][0]) > wb or abs(planet['position'][1]) > wb:
+                to_del.append(planet_name)
+                continue
         count_frame = count_frame or frame_count % 2 == 0
         if count_frame:
             maybe_append(planet['old_positions'], planet['position'])
-        follow_position = planet['position'] if not following else planets[following]['position']
-        max_size = max(max_size * decrease_factor, abs(follow_position[0]) * 1.1, abs(follow_position[1]) * 1.1)
+        if not camera_mode or following:
+            follow_position = planet['position'] if not following else planets[following]['position']
+            follow_radius = planet['radius'] if not following else planets[following]['radius']
+            max_size = max(max_size * decrease_factor, (abs(follow_position[0])+follow_radius* 50) * 1.1, (abs(follow_position[1])+follow_radius*50) * 1.1)
+    for n in to_del:
+        if following==n:
+            following=''
+        del planets[n]
 
 compute_frame()
 
@@ -621,7 +658,7 @@ def screen_to_space(pos):
 
 def space_to_screen(pos, cam_pos=None):
     if cam_pos is None:
-        cam_pos = camera_x, camera_y
+        cam_pos = (camera_x, camera_y)
     cam_x, cam_y = cam_pos
     x, y = pos
     return ((((x - cam_x) / kmpx_ratio) + 1000) / 2,
@@ -675,14 +712,18 @@ def draw_space():
             pygame.draw.line(screen, (24, 25, 70), (spacezero[0] + i * line_space * (x-neglines[0]*i), 0), (spacezero[0] + i * (x-neglines[0]*i) * line_space, screen_size), 2)
 
     for y in range(round(lines / 2) + 5):
-        for i in range(2):
-            i = 1 - i * 2
+        for i in (1, -1):
             pygame.draw.line(screen, (24, 25, 70), (0, spacezero[1] + i * line_space * -(y - neglines[1] * i)),
                              (screen_size, spacezero[1] + i * line_space * -(y - neglines[1] * i)), 2)
 
     pygame.draw.line(screen, (255, 255, 255), (spacezero[0], 0), (spacezero[0], screen_size), 2)
     pygame.draw.line(screen, (255, 255, 255), (0, spacezero[1]), (screen_size, spacezero[1]), 2)
 
+    wb = int(settings['World Border Size']['value'])
+    if setting_objs['World Border'].value:
+        for i in (-1, 1):
+            for j in (-1, 1):
+                pygame.draw.line(screen, (200, 0, 0), space_to_screen((wb*i,wb*j)), space_to_screen((wb*j,-wb*i)), 2)
     if launching:
         mouse_x, mouse_y = pygame.mouse.get_pos()
         planet_x, planet_y = space_to_screen(planets[launching]['position'], (t_camera_x, t_camera_y))
@@ -869,7 +910,7 @@ while True:
             elif event.button == 3:
                 mouse_x, mouse_y = event.pos
                 for planet_name, planet in planets.items():
-                    if math.hypot(mouse_x - space_to_screen(planet['position'])[0], mouse_y - space_to_screen(planet['position'])[1]) <= calculate_planet_size(planet['radius']) + 5:
+                    if math.hypot(mouse_x - space_to_screen(planet['position'])[0], mouse_y - space_to_screen(planet['position'])[1]) <= calculate_planet_size(planet['radius'], planet['is_sun']) + 5:
                         camera_mode = 1
                         camera_x, camera_y = planet['position']
                         following = planet_name
@@ -906,8 +947,8 @@ while True:
                     real_sizes = not real_sizes
                 elif event.key == pygame.K_q:
                     creating_x, creating_y = screen_to_space(pygame.mouse.get_pos())
-                    pause(True)
-                    creating = True
+                    creating = not creating
+                    pause(creating)
                 elif event.key == pygame.K_d:
                     for planet_name, planet in planets.items():
                         planet['old_positions'] = deque(maxlen=round(fps*int(setting_objs['Trail Lifetime (s)'].value)))
@@ -932,6 +973,18 @@ while True:
                     elif name=='Time Scale (sim s/real s)':
                         dt_scale = float(setting_objs['Time Scale (sim s/real s)'].value) / 60
                         dt = dt_scale if not real_time else dt
+                    elif name=='World Border Size':
+                        settings['World Border Size']['value'] = result
+                    elif name=='Full Solar System':
+                        print(result)
+                        FULL_SYSTEM = result
+                        SMALL_SYSTEM = not result
+                        init_planets()
+                        compute_frame()
+                    elif name=='Date':
+                        settings['Date']['value'] = result
+                        t = datetime.datetime(result.year, result.month, result.day,0,0,0)
+                        init_planets()
     if moving:
         mouse_x, mouse_y = pygame.mouse.get_pos()
         space_mouse_x, space_mouse_y = screen_to_space((mouse_x, mouse_y))
