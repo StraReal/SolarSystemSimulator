@@ -100,6 +100,10 @@ total_size = screen_size+bar_size
 screen = pygame.display.set_mode((total_size, screen_size))
 surface = pygame.Surface((total_size, screen_size), pygame.SRCALPHA)
 
+icon_surface = pygame.image.load('assets/SSSIcon.png').convert_alpha()
+
+pygame.display.set_icon(icon_surface)
+
 sidebar = pygame.Rect(screen_size, 0, bar_size, screen_size)
 
 name_rect = pygame.Rect(screen_size+20, 10, bar_size-40, 40)
