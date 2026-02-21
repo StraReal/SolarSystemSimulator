@@ -464,7 +464,8 @@ inputs = {'Name': {'type':str, 'h':40, 'value':'Planet_Name'},
           'Mass': {'type':float, 'h':40, 'value':'5.972e24'},
           'Radius': {'type':float, 'h':40, 'value':'6371'},
           'R': {"type":int, 'h':40, 'value':14,'acceptszero':True,}, 'G':{'type':int, 'h':40, 'value':100,'acceptszero':True,}, 'B':{'type':int, 'h':40, 'value':168,'acceptszero':True,},
-          'Has Rings': {'type':bool, 'h':42, 'value':False}}
+          'Has Rings': {'type':bool, 'h':42, 'value':False},
+          'Immovable': {'type':bool, 'h':42, 'value':False},}
 
 input_boxes=[]
 results=[]
@@ -520,7 +521,7 @@ def calculate_initial_velocity(satellite, central_body=None, clockwise=False):
 
     return vx, vy
 
-def create_planet(name, mass, radius, color, x, y, has_rings=False):
+def create_planet(name, mass, radius, color, x, y, has_rings=False, is_sun=False):
     global planets, creating
     planets[name] = {
         'mass': mass,
@@ -530,7 +531,7 @@ def create_planet(name, mass, radius, color, x, y, has_rings=False):
         'old_positions': deque(maxlen=round(fps*int(setting_objs['Trail Lifetime (s)'].value))),
         'velocity': np.array([0, 0]),
         'has_rings': has_rings,
-        'is_sun': False,
+        'is_sun': is_sun,
     }
     creating=False
 
@@ -879,7 +880,7 @@ while True:
                                 results[i] = result
                         if all(r is not None for r in results):
                             planet_color = (results[3], results[4], results[5])
-                            create_planet(results[0], results[1], results[2], planet_color ,creating_x, creating_y, results[6])
+                            create_planet(results[0], results[1], results[2], planet_color ,creating_x, creating_y, results[6], results[7])
                             pause(False)
                             compute_frame(True)
                     elif not create_rect.collidepoint(mouse_x, mouse_y):
