@@ -111,6 +111,8 @@ mass_rect = pygame.Rect(screen_size+20, 70, bar_size-40, 40)
 radius_rect = pygame.Rect(screen_size+20, 120, bar_size-40, 40)
 velocity_rect = pygame.Rect(screen_size+20, 170, bar_size-40, 40)
 velocity_rect_y = pygame.Rect(screen_size+20, 170+15, bar_size-40, 40)
+bigattractor_rect = pygame.Rect(screen_size+20, 235, bar_size-40, 40)
+bigattractor_attraction_rect = pygame.Rect(screen_size+20, 235+20, bar_size-40, 40)
 
 delete_rect = pygame.Rect(screen_size+ bar_size/2+8, screen_size-40-10, bar_size/2 - 16, 40)
 deleteimage = pygame.image.load('assets/DeleteIcon.png').convert_alpha()
@@ -148,7 +150,7 @@ class InputBox:
     def __init__(self, name:str, y, h, value:str|int|float|bool|datetime.datetime=None, input_type:type=bool, anim_time=0.3, acceptszero=False, alwaysreturn=True):
         self.name = name
         self.acceptszero = acceptszero
-        self.alwaysreturn = alwaysreturn
+        self.alwaysreturn = alwaysreturn and input_type is bool
         self.input_type = input_type
 
         w, _ = clock_font.size(self.name)
@@ -314,7 +316,7 @@ class InputBox:
                         entered = self.input_type(entered)
                     self._activate(False)
                     return entered, True
-                return None, False
+            return None, False
         elif self.input_type is bool:
             if self.srect.collidepoint(pos):
                 self.toggle()
@@ -516,7 +518,7 @@ def calculate_initial_velocity(satellite, central_body=None, clockwise=False):
     r  = math.hypot(dx, dy)
 
     if r == 0:
-        raise ValueError("Satellite and central body occupy the same point")
+        return 0,0
 
     speed = math.sqrt(gravitational_constant * cmass / r)
     i=1-clockwise*2
@@ -535,7 +537,7 @@ def create_planet(name, mass, radius, color, x, y, has_rings=False, is_sun=False
         'radius': radius,
         'color': color,
         'position': np.array([x, y]),
-        'old_positions': deque(maxlen=round(fps*int(setting_objs['Trail Lifetime (s)'].value))),
+        'old_positions': deque(maxlen=round(fps*float(setting_objs['Trail Lifetime (s)'].value))),
         'velocity': np.array([0, 0]),
         'has_rings': has_rings,
         'is_sun': is_sun,
@@ -599,6 +601,7 @@ def init_planets():
                 x, y, _ = pos.get_position(f'{planet_name.lower()} barycenter', date=t)
                 planet['position'] = np.array([x, y])
             except KeyError:
+                planet['position'] = np.array([0,0])
                 print(f'{planet_name} is not included in database.')
         planet['velocity'] = calculate_initial_velocity(planet, planets['Sun'])
 
@@ -626,6 +629,7 @@ def compute_frame(count_frame=False):
         if planet['is_sun']:
             continue
         planet['acceleration'] = [0,0]
+        planet['bigattractor'] = (0,0)
         for other_name, other in planets.items():
             if planet_name != other_name:
                 r_vec = np.array(other['position']) - np.array(planet['position'])
@@ -633,6 +637,9 @@ def compute_frame(count_frame=False):
                                                   (calculate_distance(planet['position'][0], planet['position'][1],
                                                                      other['position'][0], other['position'][1]))*1000)
                 planet['acceleration'] += calculate_acceleration(attraction, planet['mass'], -r_vec)
+                if following==planet_name:
+                    if abs(attraction) > planet['bigattractor'][1]:
+                        planet['bigattractor'] = (other_name, attraction)
         planet['velocity'] = calculate_velocity(planet['velocity'], planet['acceleration'], dt)
         planet['angle'] = calculate_angle(planet['velocity'])
         planet['position'] = calculate_position(planet['position'], planet['velocity'], dt)
@@ -643,7 +650,7 @@ def compute_frame(count_frame=False):
         count_frame = count_frame or frame_count % 2 == 0
         if count_frame:
             maybe_append(planet['old_positions'], planet['position'])
-        if not camera_mode or following:
+        if not camera_mode or following==planet_name:
             follow_position = planet['position'] if not following else planets[following]['position']
             follow_radius = planet['radius'] if not following else planets[following]['radius']
             max_size = max(max_size * decrease_factor, (abs(follow_position[0])+follow_radius* 50) * 1.1, (abs(follow_position[1])+follow_radius*50) * 1.1)
@@ -820,9 +827,20 @@ def draw_space():
         text_rect = text_surface.get_rect(midleft=velocity_rect.midleft)
         screen.blit(text_surface, text_rect)
 
-        text = "          y{:.2e}".format(velocity[1])+"km/s"
+        text = "          y{:.2e}km/s".format(velocity[1])
         text_surface = clock_font.render(text, True, (255, 255, 255))
         text_rect = text_surface.get_rect(bottomleft=velocity_rect_y.bottomleft)
+        screen.blit(text_surface, text_rect)
+
+        ba = planets[following]['bigattractor'] if not planets[following]['is_sun'] else (None, 0)
+        text = f"Main Attractor: {ba[0]}"
+        text_surface = clock_font.render(text, True, (255, 255, 255))
+        text_rect = text_surface.get_rect(midleft=bigattractor_rect.midleft)
+        screen.blit(text_surface, text_rect)
+
+        text = "{:.2e}N".format(ba[1])
+        text_surface = clock_font.render(text, True, (255, 255, 255))
+        text_rect = text_surface.get_rect(bottomright=bigattractor_attraction_rect.bottomright)
         screen.blit(text_surface, text_rect)
 
         delimage_rect = deleteimage.get_rect(topleft=delete_rect.topleft)
@@ -959,7 +977,7 @@ while True:
                     pause(creating)
                 elif event.key == pygame.K_d:
                     for planet_name, planet in planets.items():
-                        planet['old_positions'] = deque(maxlen=round(fps*int(setting_objs['Trail Lifetime (s)'].value)))
+                        planet['old_positions'] = deque(maxlen=round(fps*float(setting_objs['Trail Lifetime (s)'].value)))
                         planet['old_positions'].append(planet['position'])
                 elif event.key == pygame.K_s:
                     settings_on = not settings_on
