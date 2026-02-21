@@ -101,8 +101,8 @@ screen = pygame.display.set_mode((total_size, screen_size))
 surface = pygame.Surface((total_size, screen_size), pygame.SRCALPHA)
 
 icon_surface = pygame.image.load('assets/SSSIcon.png').convert_alpha()
-
 pygame.display.set_icon(icon_surface)
+pygame.display.set_caption('Solar System Simulator')
 
 sidebar = pygame.Rect(screen_size, 0, bar_size, screen_size)
 
@@ -145,9 +145,10 @@ clock_rect = pygame.Rect(10, 10, 300, 40)
 pos_rect = pygame.Rect(screen_size-300-10, 10, 300, 40)
 
 class InputBox:
-    def __init__(self, name:str, y, h, value:str|int|float|bool|datetime.datetime=None, input_type:type=bool, anim_time=0.3, acceptszero=False):
+    def __init__(self, name:str, y, h, value:str|int|float|bool|datetime.datetime=None, input_type:type=bool, anim_time=0.3, acceptszero=False, alwaysreturn=True):
         self.name = name
         self.acceptszero = acceptszero
+        self.alwaysreturn = alwaysreturn
         self.input_type = input_type
 
         w, _ = clock_font.size(self.name)
@@ -312,13 +313,13 @@ class InputBox:
                     else:
                         entered = self.input_type(entered)
                     self._activate(False)
-                    return entered
-                return None
+                    return entered, True
+                return None, False
         elif self.input_type is bool:
             if self.srect.collidepoint(pos):
                 self.toggle()
-                return self.value
-            return None
+                return self.value, True
+            return self.value, False or self.alwaysreturn
         elif self.input_type is datetime.datetime:
             oldactive = self.active
             self._activate(0)
@@ -343,9 +344,10 @@ class InputBox:
                                                     day=self.value.day, hour=0, minute=0, second=0)
                         self._activate(False)
                         print(entered)
-                        return entered
-                    return None
-            return None
+                        return entered, True
+                    return None, False or self.alwaysreturn
+            return None, False or self.alwaysreturn
+        return None, False or self.alwaysreturn
 
     def handle_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN:
@@ -360,8 +362,8 @@ class InputBox:
                         entered = self.value
                         entered = self.input_type(entered)
                         self._activate(False)
-                        return entered
-                    return None
+                        return entered, True
+                    return None, False
                 elif event.key == pygame.K_BACKSPACE:
                     self.value = self.value[:-1]
                 else:
@@ -378,7 +380,7 @@ class InputBox:
                             self.txt_surface = clock_font.render(self.value, True, pygame.Color('white'))
                     except Exception:
                         pass
-                    return None
+                    return None, False
             elif self.input_type is datetime.datetime:
                 for n, list in self.clickable_rects.items():
                     if self.active == n:
@@ -398,8 +400,7 @@ class InputBox:
                                                                          pygame.Color('white'))
                                 entered = datetime.datetime(year=self.value.year, month=self.value.month,
                                                            day=self.value.day, hour=0, minute=0, second=0)
-                                return entered
-                            return None
+                                return entered, True
                         elif event.key == pygame.K_BACKSPACE:
                             current_val = list[2]
                             txt = str(str(current_val)[:-1])
@@ -421,6 +422,8 @@ class InputBox:
                             list[2]=txt
 
                         self.txt_surface = clock_font.render(list[1], True, pygame.Color('white'))
+                    return None, False
+        return None, False or self.alwaysreturn
 
     def update(self):
         if self.txt_input:
@@ -499,7 +502,7 @@ for name, specs in settings.items():
         specs['h'] = 40
     if not 'acceptszero' in specs:
         specs['acceptszero'] = False
-    setting_objs[name] = (InputBox(name, y, specs['h'], specs['value'], input_type=specs['type'], acceptszero=specs['acceptszero']))
+    setting_objs[name] = (InputBox(name, y, specs['h'], specs['value'], input_type=specs['type'], acceptszero=specs['acceptszero'], alwaysreturn=False))
     y += specs['h'] + 20
 
 def calculate_initial_velocity(satellite, central_body=None, clockwise=False):
@@ -878,10 +881,10 @@ while True:
                     if confirm_rect.collidepoint(mouse_x, mouse_y):
                         for i, input_box in enumerate(input_boxes):
                             result = input_box.handle_event(event)
-                            if (not input_box.acceptszero) and isinstance(result, int) and result == 0:
+                            if not result[1]:
                                 result=None
                             if result is not None:
-                                results[i] = result
+                                results[i] = result[0]
                         if all(r is not None for r in results):
                             planet_color = (results[3], results[4], results[5])
                             create_planet(results[0], results[1], results[2], planet_color ,creating_x, creating_y, results[6], results[7])
@@ -964,14 +967,15 @@ while True:
         if creating:
             for i, input_box in enumerate(input_boxes):
                 result=input_box.handle_event(event)
-                if (not input_box.acceptszero) and (type(result) ==int) and result == 0:
+                if not result[1]:
                     result = None
                 if result is not None:
-                    results[i] = result
+                    results[i] = result[0]
         if settings_on:
             for name, setting in setting_objs.items():
                 result=setting.handle_event(event)
-                if result is not None and not ((not setting.acceptszero) and (type(result) ==int) and result == 0):
+                if result[1]:
+                    result=result[0]
                     if name=='Trail Lifetime (s)':
                             for planet_name, planet in planets.items():
                                 planet['old_positions'] = deque(planet['old_positions'], maxlen=round(fps*float(setting_objs[name].value)))
@@ -981,7 +985,6 @@ while True:
                     elif name=='World Border Size':
                         settings['World Border Size']['value'] = result
                     elif name=='Full Solar System':
-                        print(result)
                         FULL_SYSTEM = result
                         SMALL_SYSTEM = not result
                         init_planets()
