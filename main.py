@@ -11,6 +11,7 @@ from position_sf import pos
 import spacegenerator as sg
 import time
 import numexpr as ne
+from utils import *
 
 max_size = 1
 zoom_factor = 1
@@ -103,6 +104,8 @@ total_size = screen_size+bar_size
 screen = pygame.display.set_mode((total_size, screen_size))
 surface = pygame.Surface((total_size, screen_size), pygame.SRCALPHA)
 
+repo_link='https://github.com/StraReal/SolarSystemSimulator'
+
 icon_surface = pygame.image.load('assets/SSSIcon.png').convert_alpha()
 pygame.display.set_icon(icon_surface)
 pygame.display.set_caption('Solar System Simulator')
@@ -116,6 +119,11 @@ velocity_rect = pygame.Rect(screen_size+20, 170, bar_size-40, 40)
 velocity_rect_y = pygame.Rect(screen_size+20, 170+15, bar_size-40, 40)
 bigattractor_rect = pygame.Rect(screen_size+20, 235, bar_size-40, 40)
 bigattractor_attraction_rect = pygame.Rect(screen_size+20, 235+20, bar_size-40, 40)
+
+settings_rect = pygame.Rect(screen_size+bar_size - 40, 10, 30, 30)
+settingsicon = pygame.image.load('assets/Settings.png').convert_alpha()
+settingsicon = pygame.transform.smoothscale(settingsicon, (settings_rect.width,
+                                             settings_rect.height))
 
 delete_rect = pygame.Rect(screen_size+ bar_size/2+8, screen_size-40-10, bar_size/2 - 16, 40)
 deleteimage = pygame.image.load('assets/DeleteIcon.png').convert_alpha()
@@ -131,6 +139,11 @@ create_rect = pygame.Rect(total_size/2-400, 200, 800, 600)
 create_text_rect = pygame.Rect(create_rect.left, create_rect.top+10, create_rect.width, 40)
 confirm_rect = pygame.Rect(create_rect.left+create_rect.width/4, create_rect.top+create_rect.height-50, create_rect.width/2, 40)
 color_rect = pygame.Rect(create_rect.left+3*create_rect.width/4+10, create_rect.top+create_rect.height-50, create_rect.width/4-20, 40)
+
+github_rect = pygame.Rect(create_rect.left+10, create_rect.top+create_rect.height-50, 41, 40)
+github_icon = pygame.image.load('assets/GithubIcon.png').convert_alpha()
+github_icon = pygame.transform.smoothscale(github_icon, (github_rect.width,
+                                             github_rect.height))
 
 earth_x, earth_y = 0, 0
 mouse_x, mouse_y = 0, 0
@@ -825,6 +838,9 @@ def draw_space():
     following_color = planets[following]['color'] if following else (10, 10, 20)
     sidebar_color = ((following_color[0]+50)/6, (following_color[1]+50)/6, (following_color[2]+100)/6)
     pygame.draw.rect(screen, sidebar_color, sidebar)
+
+    screen.blit(settingsicon, settings_rect)
+
     if following:
         text = following
         text_surface = clock_font.render(text, True, (255, 255, 255))
@@ -863,11 +879,9 @@ def draw_space():
         text_rect = text_surface.get_rect(bottomright=bigattractor_attraction_rect.bottomright)
         screen.blit(text_surface, text_rect)
 
-        delimage_rect = deleteimage.get_rect(topleft=delete_rect.topleft)
-        screen.blit(deleteimage, delimage_rect)
+        screen.blit(deleteimage, delete_rect)
 
-        editimage_rect = editimage.get_rect(topleft=edit_rect.topleft)
-        screen.blit(editimage, editimage_rect)
+        screen.blit(editimage, edit_rect)
 
     if creating or editing:
         pygame.draw.rect(screen, (30, 30, 50), create_rect)
@@ -875,6 +889,9 @@ def draw_space():
         text_surface = title_font.render(text, True, (255, 255, 255))
         text_rect = text_surface.get_rect(center=create_text_rect.center)
         screen.blit(text_surface, text_rect)
+
+        screen.blit(github_icon, github_rect)
+
         for input_box in input_boxes:
             input_box.update()
             input_box.draw(screen)
@@ -896,6 +913,9 @@ def draw_space():
         text_surface = title_font.render(text, True, (255, 255, 255))
         text_rect = text_surface.get_rect(center=create_text_rect.center)
         screen.blit(text_surface, text_rect)
+
+        screen.blit(github_icon, github_rect)
+
         for name, setting in setting_objs.items():
             setting.update()
             setting.draw(screen)
@@ -917,7 +937,9 @@ while True:
             if event.button == 1:
                 mouse_x, mouse_y = event.pos
                 if creating:
-                    if confirm_rect.collidepoint(mouse_x, mouse_y):
+                    if github_rect.collidepoint(mouse_x, mouse_y):
+                        open_url(repo_link)
+                    elif confirm_rect.collidepoint(mouse_x, mouse_y):
                         for i, input_box in enumerate(input_boxes):
                             result = input_box.handle_event(event)
                             if not result[1]:
@@ -934,7 +956,9 @@ while True:
                             creating = False
                             pause(False)
                 elif editing:
-                    if confirm_rect.collidepoint(mouse_x, mouse_y):
+                    if github_rect.collidepoint(mouse_x, mouse_y):
+                        open_url(repo_link)
+                    elif confirm_rect.collidepoint(mouse_x, mouse_y):
                         for i, input_box in enumerate(input_boxes):
                             result = input_box.handle_event(event)
                             if not result[1]:
@@ -956,6 +980,8 @@ while True:
                             editing = ''
                             pause(False)
                 elif settings_on:
+                    if github_rect.collidepoint(mouse_x, mouse_y):
+                        open_url(repo_link)
                     if not create_rect.collidepoint(mouse_x, mouse_y):
                         settings_on = False
                         pause(False)
@@ -970,6 +996,9 @@ while True:
                         orig_space_mouse_x, orig_space_mouse_y = screen_to_space((mouse_x, mouse_y))
                         orig_camera_x, orig_camera_y = camera_x, camera_y
                         moving = True
+                    if settings_rect.collidepoint(mouse_x, mouse_y):
+                        settings_on = True
+                        pause(settings_on)
                     if following:
                         if delete_rect.collidepoint(mouse_x, mouse_y):
                             planets.pop(following)

@@ -1,9 +1,7 @@
 import pygame
 import random
+from utils import interpolate_colors
 
-def interpolate_colors(col1, col2):
-    col3 = ((col1[0]+col2[0])/2, (col1[1]+col2[1])/2, (col1[2]+col2[2])/2,)
-    return col3
 def generate_starfield(width, height, star_count=800,
                        min_radius=1, max_radius=3):
 
