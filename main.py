@@ -342,9 +342,8 @@ class InputBox:
             self._activate(0)
             for n, list in self.clickable_rects.items():
                 self._activate(n if list[0].collidepoint(pos) else self.active)
-                wasactive=(oldactive==n) and self.active!=n
+                wasactive=self.active==0 and oldactive==n
                 if wasactive:
-                    print(wasactive)
                     ndate=[v[2] for v in self.clickable_rects.values()]
                     if self._isvalid(value=ndate):
                         attr_name = list[1]
@@ -1110,6 +1109,7 @@ while True:
                         settings['Date']['value'] = result
                         t = datetime.datetime(result.year, result.month, result.day,0,0,0)
                         init_planets()
+                        compute_frame()
     if moving:
         mouse_x, mouse_y = pygame.mouse.get_pos()
         space_mouse_x, space_mouse_y = screen_to_space((mouse_x, mouse_y))
