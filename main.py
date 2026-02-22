@@ -8,7 +8,6 @@ import pygame
 import re
 from collections import deque
 from position_sf import pos
-import spacegenerator as sg
 import time
 import numexpr as ne
 from utils import *
@@ -683,7 +682,7 @@ def compute_frame(count_frame=False):
 compute_frame()
 
 background_size = 2048
-space_surf = sg.generate_starfield(background_size, background_size)
+space_surf = generate_starfield(background_size, background_size)
 
 print('(Relative to the sun) x:', planets['Earth']['position'][0], ' y:', planets['Earth']['position'][1])
 print('Acceleration:', planets['Earth']['acceleration'])
