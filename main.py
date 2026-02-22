@@ -124,6 +124,14 @@ settingsicon = pygame.image.load('assets/Settings.png').convert_alpha()
 settingsicon = pygame.transform.smoothscale(settingsicon, (settings_rect.width,
                                              settings_rect.height))
 
+star_rect = pygame.Rect(screen_size+10, 10, 30, 30)
+star_icon = pygame.image.load('assets/Star.png').convert_alpha()
+star_icon = pygame.transform.smoothscale(star_icon, (star_rect.width,
+                                             star_rect.height))
+empty_star_icon = pygame.image.load('assets/EmptyStar.png').convert_alpha()
+empty_star_icon = pygame.transform.smoothscale(empty_star_icon, (star_rect.width,
+                                             star_rect.height))
+
 delete_rect = pygame.Rect(screen_size+ bar_size/2+8, screen_size-40-10, bar_size/2 - 16, 40)
 deleteimage = pygame.image.load('assets/DeleteIcon.png').convert_alpha()
 deleteimage = pygame.transform.smoothscale(deleteimage, (delete_rect.width,
@@ -560,6 +568,7 @@ def create_planet(name, mass, radius, color, x, y, has_rings=False, is_sun=False
         'velocity': np.array([0, 0]),
         'has_rings': has_rings,
         'is_sun': is_sun,
+        'favorite': False,
     }
     creating=False
 
@@ -608,6 +617,8 @@ def init_planets():
             planet['is_sun'] = False
         if 'has_rings' not in planet:
             planet['has_rings'] = False
+        if 'favorite' not in planet:
+            planet['favorite'] = False
         planet['old_positions'] = deque(maxlen=round(fps*float(setting_objs['Trail Lifetime (s)'].value)))
         if planet['is_sun']:
             continue
@@ -840,6 +851,8 @@ def draw_space():
     screen.blit(settingsicon, settings_rect)
 
     if following:
+        screen.blit(star_icon if planets[following]['favorite'] else empty_star_icon, star_rect)
+
         text = following
         text_surface = clock_font.render(text, True, (255, 255, 255))
         text_rect = text_surface.get_rect(center=name_rect.center)
@@ -964,12 +977,15 @@ while True:
                             if result is not None:
                                 results[i] = result[0]
                         if all(r is not None for r in results):
+                            planet=planets.pop(editing)
+                            planets[results[0]] = planet
+                            following=results[0]
                             planet_color = (results[3], results[4], results[5])
-                            planets[editing]['mass']=results[1]
-                            planets[editing]['radius'] = results[2]
-                            planets[editing]['color'] = planet_color
-                            planets[editing]['has_rings'] = results[6]
-                            planets[editing]['is_sun'] = results[7]
+                            planets[results[0]]['mass']=results[1]
+                            planets[results[0]]['radius'] = results[2]
+                            planets[results[0]]['color'] = planet_color
+                            planets[results[0]]['has_rings'] = results[6]
+                            planets[results[0]]['is_sun'] = results[7]
                             editing = ''
                             pause(False)
                             compute_frame(True)
@@ -999,7 +1015,9 @@ while True:
                         settings_on = True
                         pause(settings_on)
                     if following:
-                        if delete_rect.collidepoint(mouse_x, mouse_y):
+                        if star_rect.collidepoint(mouse_x, mouse_y):
+                            planets[following]['favorite']=not planets[following]['favorite']
+                        elif delete_rect.collidepoint(mouse_x, mouse_y):
                             planets.pop(following)
                             following = ''
                         elif edit_rect.collidepoint(mouse_x, mouse_y):
@@ -1051,8 +1069,6 @@ while True:
 
             else:
                 zoom_factor = min(100000, max(0.001, zoom_factor * (1 + event.y * 0.1)))
-
-
         elif event.type == pygame.KEYDOWN:
             if not writing:
                 if event.key == pygame.K_c:
