@@ -44,3 +44,9 @@ def cprint(text, color="w") -> None:
     }
     RESET = "\033[0m"
     print(f"{colors.get(color, colors['w'])}{text}{RESET}")
+
+def solar_radius_to_km(value, reverse=False):
+    return value / 696,342 if reverse else value*696,342
+
+def solar_mass_to_km(value, reverse=False):
+    return value / 1.988475e30 if reverse else value*1.988475e30
