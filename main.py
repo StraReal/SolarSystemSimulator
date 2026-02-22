@@ -1037,7 +1037,22 @@ while True:
                 moving = False
         elif event.type == pygame.MOUSEWHEEL:
             mouse_x, mouse_y = pygame.mouse.get_pos()
-            zoom_factor = min(100000,max(0.001, zoom_factor * (1 + event.y * 0.1)))
+            if (not following) and camera_mode:
+                orig_space_mouse_x, orig_space_mouse_y = screen_to_space((mouse_x, mouse_y))
+                orig_camera_x, orig_camera_y = camera_x, camera_y
+
+                zoom_factor = min(100000, max(0.001, zoom_factor * (1 + event.y * 0.1)))
+                if event.y>0:
+                    kmpx_ratio = max_size / screen_size / zoom_factor
+
+                mouse_x, mouse_y = pygame.mouse.get_pos()
+                space_mouse_x, space_mouse_y = screen_to_space((mouse_x, mouse_y))
+                camera_x, camera_y = orig_camera_x - space_mouse_x + orig_space_mouse_x, orig_camera_y - space_mouse_y + orig_space_mouse_y
+
+            else:
+                zoom_factor = min(100000, max(0.001, zoom_factor * (1 + event.y * 0.1)))
+
+
         elif event.type == pygame.KEYDOWN:
             if not writing:
                 if event.key == pygame.K_c:
