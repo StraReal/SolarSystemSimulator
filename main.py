@@ -339,29 +339,30 @@ class InputBox:
             return self.value, False or self.alwaysreturn
         elif self.input_type is datetime.datetime:
             oldactive = self.active
-            self._activate(0)
-            for n, list in self.clickable_rects.items():
-                self._activate(n if list[0].collidepoint(pos) else self.active)
-                wasactive=self.active==0 and oldactive==n
-                if wasactive:
-                    ndate=[v[2] for v in self.clickable_rects.values()]
-                    if self._isvalid(value=ndate):
-                        attr_name = list[1]
-                        current_val = list[2]
-                        expr = str(current_val)
-                        new_val = int(ne.evaluate(expr))
-                        self.value = self.value.replace(**{attr_name: new_val})
+            self._activate(False)
+            if create_rect.collidepoint(pos):
+                for n, list in self.clickable_rects.items():
+                    self._activate(n if list[0].collidepoint(pos) else self.active)
+                for n, list in self.clickable_rects.items():
+                    now_inactive = not self.active and oldactive
+                    if now_inactive:
+                        ndate=[v[2] for v in self.clickable_rects.values()]
+                        if self._isvalid(value=ndate):
+                            attr_name = list[1]
+                            current_val = list[2]
+                            expr = str(current_val)
+                            new_val = int(ne.evaluate(expr))
+                            self.value = self.value.replace(**{attr_name: new_val})
 
-                        txt = str(getattr(self.value, attr_name))
-                        self.txt_surfaces[n] = clock_font.render(txt,
-                                                                 True,
-                                                                 pygame.Color('white'))
-                        entered = datetime.datetime(year=self.value.year, month=self.value.month,
-                                                    day=self.value.day, hour=0, minute=0, second=0)
-                        self._activate(False)
-                        print(entered)
-                        return entered, True
-                    return None, False or self.alwaysreturn
+                            txt = str(getattr(self.value, attr_name))
+                            self.txt_surfaces[n] = clock_font.render(txt,
+                                                                     True,
+                                                                     pygame.Color('white'))
+                            entered = datetime.datetime(year=self.value.year, month=self.value.month,
+                                                        day=self.value.day, hour=0, minute=0, second=0)
+                            self._activate(False)
+                            return entered, True
+                        return None, False or self.alwaysreturn
             return None, False or self.alwaysreturn
         return None, False or self.alwaysreturn
 
@@ -403,7 +404,6 @@ class InputBox:
                         if event.key == pygame.K_RETURN:
                             self._activate(0)
                             ndate = [v[2] for v in self.clickable_rects.values()]
-                            print('valid', ndate)
                             if self._isvalid(value=ndate):
                                 attr_name = list[1]
                                 current_val = list[2]
@@ -620,8 +620,8 @@ def init_planets():
                 x, y, _ = pos.get_position(f'{planet_name.lower()} barycenter', date=t)
                 planet['position'] = np.array([x, y])
             except KeyError:
-                planet['position'] = np.array([0,0])
-                print(f'{planet_name} is not included in database.')
+                planet['position'] = np.array([100000000,100000000])
+                cprint(f'{planet_name} is not included in database.', 'r')
         planet['velocity'] = calculate_initial_velocity(planet, planets['Sun'])
 
 init_planets()
@@ -683,11 +683,11 @@ compute_frame()
 background_size = 2048
 space_surf = generate_starfield(background_size, background_size)
 
-print('(Relative to the sun) x:', planets['Earth']['position'][0], ' y:', planets['Earth']['position'][1])
-print('Acceleration:', planets['Earth']['acceleration'])
-print('Velocity:', planets['Earth']['velocity'])
-print('Angle:', planets['Earth']['angle'])
-print(t)
+cprint(f"(Relative to the sun) x: {planets['Earth']['position'][0]}km-y: {planets['Earth']['position'][1]}km", 'g')
+cprint(f"Acceleration: {planets['Earth']['acceleration']}km/s^2", 'g')
+cprint(f"Velocity: {planets['Earth']['velocity']}km/s", 'g')
+cprint(f"Angle: {planets['Earth']['angle']}°", 'g')
+cprint(t, 'c')
 
 def screen_to_space(pos):
     x, y = pos
@@ -980,9 +980,10 @@ while True:
                 elif settings_on:
                     if github_rect.collidepoint(mouse_x, mouse_y):
                         open_url(repo_link)
-                    if not create_rect.collidepoint(mouse_x, mouse_y):
-                        settings_on = False
-                        pause(False)
+                    elif not create_rect.collidepoint(mouse_x, mouse_y):
+                        if all(not setting_objs[setting].active for setting in setting_objs):
+                            settings_on = False
+                            pause(False)
                 else:
                     for planet_name, planet in planets.items():
                         if planet['is_sun']:
@@ -1022,7 +1023,7 @@ while True:
                         camera_mode = 1
                         camera_x, camera_y = planet['position']
                         following = planet_name
-                        print(following)
+                        cprint(following, 'b')
                     elif following == planet_name:
                         following = None
         elif event.type == pygame.MOUSEBUTTONUP:

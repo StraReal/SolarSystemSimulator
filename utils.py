@@ -26,3 +26,21 @@ def generate_starfield(width, height, star_count=800,
 
 
     return surf
+
+def cprint(text, color="w") -> None:
+    """
+    :param text: text to print
+    :param color: color to print in (red, green, yellow, blue, magenta, cyan, white)
+    :return: None
+    """
+    colors = {
+        "r": "\033[91m",
+        "g": "\033[92m",
+        "y": "\033[93m",
+        "b": "\033[94m",
+        "m": "\033[95m",
+        "c": "\033[96m",
+        "w": "\033[97m",
+    }
+    RESET = "\033[0m"
+    print(f"{colors.get(color, colors['w'])}{text}{RESET}")
