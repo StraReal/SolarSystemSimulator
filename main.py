@@ -38,7 +38,7 @@ f_planets = {
         'color': (200, 100, 10),
         'is_sun': True,
         'position': (0,0),
-        'velocity': (0,0)
+        'velocity': (0,0),
     },
     'Earth': {
         'mass': 5.972e24,
@@ -804,9 +804,13 @@ cprint(f"Velocity: {planets['Earth']['velocity']}km/s", 'g')
 cprint(f"Angle: {planets['Earth']['angle']}°", 'g')
 cprint(t, 'c')
 
-def screen_to_space(pos):
+def screen_to_space(pos, camera_pos=None):
+    if camera_pos is None:
+        cam_x, cam_y = camera_x, camera_y
+    else:
+        cam_x, cam_y = camera_pos
     x, y = pos
-    return kmpx_ratio * (2 * x - 1000) + camera_x, -kmpx_ratio * (2 * y - 1000) + camera_y
+    return kmpx_ratio * (2 * x - 1000) + cam_x, -kmpx_ratio * (2 * y - 1000) + cam_y
 
 def space_to_screen(pos, cam_pos=None):
     if cam_pos is None:
@@ -901,7 +905,9 @@ def draw_space():
             planet_x, planet_y = 500, 500
         else:
             planet_x, planet_y = space_to_screen(planet['position'], (t_camera_x, t_camera_y))
-        pygame.draw.circle(screen, (planet['color']), (planet_x, planet_y), planet_size)
+
+        pygame.draw.circle(screen, planet['color'], (planet_x, planet_y), planet_size)
+
         if planet['has_rings']:
             pygame.draw.circle(surface, (planet['color'][0], planet['color'][1],planet['color'][2], 100), (planet_x, planet_y), int(planet_size*1.3), int(planet_size * 0.15))
 
@@ -1062,9 +1068,8 @@ while True:
             if res[0] is not None:
                 following = res[0] if following != res[0] else ''
                 camera_mode = 1
-        if res[1]:
-            print(res[1])
         if not res[1]:
+            t_cam = (0, 0) if not camera_mode else (camera_x, camera_y)
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
                     mouse_x, mouse_y = event.pos
@@ -1125,7 +1130,7 @@ while True:
                         for planet_name, planet in planets.items():
                             if planet['is_sun']:
                                 continue
-                            if math.hypot(mouse_x - space_to_screen(planet['position'])[0], mouse_y - space_to_screen(planet['position'])[1]) <= calculate_planet_size(planet['radius']) + 5:
+                            if math.hypot(mouse_x - space_to_screen(planet['position'], t_cam)[0], mouse_y - space_to_screen(planet['position'], t_cam)[1]) <= calculate_planet_size(planet['radius']) + 5:
                                 launching = planet_name
                                 pause(True)
                         if camera_mode == 1 and not launching:
@@ -1176,7 +1181,7 @@ while True:
                 if event.button == 1:
                     if launching:
                         mouse_x, mouse_y = event.pos
-                        space_mouse_x, space_mouse_y = screen_to_space((mouse_x, mouse_y))
+                        space_mouse_x, space_mouse_y = screen_to_space((mouse_x, mouse_y), t_cam)
                         planets[launching]['velocity'] = np.array([(planets[launching]['position'])[0] - space_mouse_x, planets[launching]['position'][1] - space_mouse_y]) / 30000
                         launching = ''
                         pause(False)
