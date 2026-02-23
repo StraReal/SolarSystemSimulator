@@ -864,10 +864,9 @@ def draw_space():
     kmpx_ratio = max_size / screen_size / zoom_factor
     visible_area = screen_size * kmpx_ratio
     va_min_x = t_camera_x - visible_area/2
-    va_min_y = (-t_camera_y) - visible_area/2
+    va_min_y = t_camera_y - visible_area/2
     if setting_objs['Background Stars'].value:
-        dest_x, dest_y = ((-va_min_x/kmpx_ratio)/4) % background_size, (-va_min_y/kmpx_ratio)/4 % background_size
-
+        dest_x, dest_y = (-va_min_x/(kmpx_ratio*4)) % background_size, (va_min_y/(kmpx_ratio*4)) % background_size
 
         screen.blit(space_surf, (dest_x, dest_y))
         screen.blit(space_surf, (dest_x-background_size, dest_y))
@@ -887,8 +886,8 @@ def draw_space():
 
     for y in range(math.ceil(lines / 2) + 6):
         for i in (1, -1):
-            pygame.draw.line(screen, (24, 25, 70), (0, spacezero[1] + i * line_space * -(y - neglines[1] * i)),
-                             (screen_size, spacezero[1] + i * line_space * -(y - neglines[1] * i)), 2)
+            pygame.draw.line(screen, (24, 25, 70), (0, spacezero[1] + i * line_space * (y - neglines[1] * i)),
+                             (screen_size, spacezero[1] + i * line_space * (y - neglines[1] * i)), 2)
 
     pygame.draw.line(screen, (255, 255, 255), (spacezero[0], 0), (spacezero[0], screen_size), 2)
     pygame.draw.line(screen, (255, 255, 255), (0, spacezero[1]), (screen_size, spacezero[1]), 2)
