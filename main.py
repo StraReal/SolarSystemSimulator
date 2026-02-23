@@ -932,8 +932,6 @@ def draw_space():
                        int(planet_y + planet['acceleration'][1] * fps * 1440 * 2000 / -kmpx_ratio))
             if (0 <= end_pos[0] <= screen_size and 0 <= end_pos[1] <= screen_size) or (0 <= planet_x <= screen_size and 0 <= planet_y <= screen_size):
                 pygame.draw.line(screen, (200, 0, 0), (planet_x, planet_y), end_pos, 5)
-            if planet_name == 'Earth':
-                earth_x, earth_y, earth_size = planet_x, planet_y, planet_size
 
             if setting_objs['Transparent Trails'].value:
                 for i in range(len(planet['old_positions']) - 1):
@@ -948,7 +946,7 @@ def draw_space():
             if len(planet['old_positions']) > 0:
                 lpos = space_to_screen(planet['old_positions'][-1], (t_camera_x, t_camera_y))
                 pygame.draw.line(screen, (150, 150, 180), lpos, (planet_x, planet_y), 2)
-            screen.blit(surface, (0, 0))
+        screen.blit(surface, (0, 0))
 
     pygame.draw.rect(screen, (100, 100, 150), clock_rect)
 
