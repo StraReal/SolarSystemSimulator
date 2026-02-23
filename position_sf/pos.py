@@ -1,6 +1,10 @@
 from skyfield.api import load, Topos
+import skyfield.errors as SKErr
 import datetime
 import pathlib
+
+max_date = datetime.datetime(year=2650, month=1, day=25)
+min_date = datetime.datetime(year=1550, month=1, day=1)
 
 def init():
     global planets
@@ -15,6 +19,8 @@ def get_position(planet:str='earth', date:datetime.datetime=datetime.datetime.no
     sat   = planets[planet]
     sun     = planets['sun']
 
+    date = max(min(max_date, date), min_date)
+
     # Skyfield expects a TimeScale object
     ts = load.timescale()
     t = ts.utc(date.year, date.month, date.day,
@@ -23,11 +29,12 @@ def get_position(planet:str='earth', date:datetime.datetime=datetime.datetime.no
     # Get Earth’s position relative to the Sun
     vec = sat.at(t).observe(sun).position.km   # vector Sun->Earth in km
     x, y, z = vec
-    return x, y, z
+    return x, y, z, date
+
 
 if __name__ == '__main__':
     init()
-    x, y, z = get_position()
+    x, y, z, date = get_position()
     print(f"Earth (Sun‑centered) today")
     print(f"  x = {x:,.0f} km")
     print(f"  y = {y:,.0f} km")

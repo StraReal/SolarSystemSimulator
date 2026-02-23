@@ -392,6 +392,13 @@ class InputBox:
                             self._activate(False)
                             return entered, True
                         return None, False or self.alwaysreturn
+            else:
+                 for n, list in self.clickable_rects.items():
+                     attr_name = list[1]
+                     txt = str(getattr(self.value, attr_name))
+                     self.txt_surfaces[n] = clock_font.render(txt,
+                                                              True,
+                                                              pygame.Color('white'))
             return None, False or self.alwaysreturn
         return None, False or self.alwaysreturn
 
@@ -704,7 +711,7 @@ def calculate_distance(x1, y1, x2, y2):
     return np.linalg.norm(np.array([x2 - x1, y2 - y1]))
 
 def init_planets():
-    global planets, pmenu
+    global planets, pmenu, t
 
     planets = copy.deepcopy(f_planets)
     if not FULL_SYSTEM:
@@ -727,12 +734,15 @@ def init_planets():
             continue
         pos.init()
         try:
-            x, y, _ = pos.get_position(planet_name.lower(), date=t)
+            x, y, _, t = pos.get_position(planet_name.lower(), date=t)
             planet['position'] = np.array([x, y])
+            setting_objs['Date'].value = t
+            setting_objs['Date']._update_values()
         except KeyError:
             try:
-                x, y, _ = pos.get_position(f'{planet_name.lower()} barycenter', date=t)
+                x, y, _, t = pos.get_position(f'{planet_name.lower()} barycenter', date=t)
                 planet['position'] = np.array([x, y])
+                setting_objs['Date'].value = t
             except KeyError:
                 planet['position'] = np.array([100000000,100000000])
                 cprint(f'{planet_name} is not included in database.', 'r')
