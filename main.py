@@ -882,11 +882,10 @@ def draw_space():
     spacezero = space_to_screen((0,0), (t_camera_x, t_camera_y))
     neglines = (math.floor((spacezero[0]-spacemin[0])/line_space), math.floor((spacezero[1]-spacemin[1])/line_space))
     for x in range(round(lines/2) + 5):
-        for i in range(2):
-            i=1-i*2
+        for i in (1, -1):
             pygame.draw.line(screen, (24, 25, 70), (spacezero[0] + i * line_space * (x-neglines[0]*i), 0), (spacezero[0] + i * (x-neglines[0]*i) * line_space, screen_size), 2)
 
-    for y in range(round(lines / 2) + 5):
+    for y in range(math.ceil(lines / 2) + 6):
         for i in (1, -1):
             pygame.draw.line(screen, (24, 25, 70), (0, spacezero[1] + i * line_space * -(y - neglines[1] * i)),
                              (screen_size, spacezero[1] + i * line_space * -(y - neglines[1] * i)), 2)
